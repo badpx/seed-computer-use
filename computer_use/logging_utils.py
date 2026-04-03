@@ -68,7 +68,9 @@ class ContextLogger:
         self,
         success: bool,
         final_response: Optional[str] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        elapsed_seconds: Optional[float] = None,
+        elapsed_time_text: Optional[str] = None,
     ) -> None:
         """结束当前任务。"""
         self.log_event(
@@ -76,6 +78,8 @@ class ContextLogger:
             success=success,
             final_response=final_response,
             error=error,
+            elapsed_seconds=elapsed_seconds,
+            elapsed_time_text=elapsed_time_text,
         )
 
     @property

@@ -223,6 +223,8 @@ class ComputerUseAgent:
                         execution_status='failed',
                         execution_result=None,
                         failure_reason=failure_reason,
+                        elapsed_seconds=step_record['elapsed_seconds'],
+                        elapsed_time_text=step_record['elapsed_time_text'],
                     )
                     if self.verbose:
                         print(f"  解析失败: {failure_reason}")
@@ -265,6 +267,8 @@ class ComputerUseAgent:
                         execution_status='finished',
                         execution_result=result['final_response'],
                         failure_reason=None,
+                        elapsed_seconds=step_record['elapsed_seconds'],
+                        elapsed_time_text=step_record['elapsed_time_text'],
                     )
                     
                     result['elapsed_seconds'] = time.perf_counter() - task_start_time
@@ -319,6 +323,8 @@ class ComputerUseAgent:
                         execution_status='failed',
                         execution_result=None,
                         failure_reason=failure_reason,
+                        elapsed_seconds=step_record['elapsed_seconds'],
+                        elapsed_time_text=step_record['elapsed_time_text'],
                     )
                     if self.verbose:
                         print(f"  执行失败: {failure_reason}")
@@ -353,6 +359,8 @@ class ComputerUseAgent:
                         execution_status='finished',
                         execution_result='DONE',
                         failure_reason=None,
+                        elapsed_seconds=step_record['elapsed_seconds'],
+                        elapsed_time_text=step_record['elapsed_time_text'],
                     )
                     result['elapsed_seconds'] = time.perf_counter() - task_start_time
                     result['elapsed_time_text'] = self._format_elapsed_time(
@@ -390,6 +398,8 @@ class ComputerUseAgent:
                     execution_status='success',
                     execution_result=exec_result,
                     failure_reason=None,
+                    elapsed_seconds=step_record['elapsed_seconds'],
+                    elapsed_time_text=step_record['elapsed_time_text'],
                 )
                 if self.verbose:
                     print(f"  步耗时: {self._format_elapsed_time(step_elapsed_seconds)}")
@@ -420,6 +430,8 @@ class ComputerUseAgent:
             success=result['success'],
             final_response=result['final_response'],
             error=result['error'],
+            elapsed_seconds=result['elapsed_seconds'],
+            elapsed_time_text=result['elapsed_time_text'],
         )
         
         return result
