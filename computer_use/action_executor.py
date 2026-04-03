@@ -3,6 +3,8 @@
 基于 parse.py 重构，支持所有动作类型的执行
 """
 
+import re
+import sys
 import time
 from typing import Dict, Any, List, Tuple, Union
 
@@ -220,18 +222,8 @@ class ActionExecutor:
         
         if not hotkey:
             raise ValueError("热键操作需要 hotkey 或 key 参数")
-        
-        # 转换按键名称
-        hotkey = self._normalize_key(hotkey)
-        
-        # 分割多个按键
-        keys = hotkey.split()
-        
-        # 转换特殊按键
-        convert_keys = []
-        for key in keys:
-            key = self._normalize_key(key)
-            convert_keys.append(key)
+
+        convert_keys = self._normalize_hotkey_keys(hotkey)
         
         # 执行热键
         pyautogui.hotkey(*convert_keys)
@@ -289,7 +281,7 @@ class ActionExecutor:
             try:
                 import pyperclip
                 pyperclip.copy(content)
-                pyautogui.hotkey('ctrl', 'v')
+                pyautogui.hotkey(*self._get_paste_hotkey())
                 time.sleep(0.3)
                 result = f"输入文本(剪贴板): {content[:50]}{'...' if len(content) > 50 else ''}"
             except ImportError:
@@ -350,6 +342,29 @@ class ActionExecutor:
         if self.verbose:
             print(f"  [完成] {result}")
         return "DONE"
+
+    def _normalize_hotkey_keys(self, hotkey: str) -> List[str]:
+        """将热键字符串标准化为 pyautogui 可识别的按键序列。"""
+        raw_keys = re.split(r'\s*\+\s*|\s+', hotkey.strip())
+        keys = []
+
+        for raw_key in raw_keys:
+            if not raw_key:
+                continue
+            normalized_key = self._normalize_key(raw_key)
+            if normalized_key:
+                keys.append(normalized_key)
+
+        if not keys:
+            raise ValueError("热键操作未解析出有效按键")
+
+        return keys
+
+    def _get_paste_hotkey(self) -> Tuple[str, str]:
+        """根据当前平台返回粘贴快捷键。"""
+        if sys.platform == 'darwin':
+            return ('command', 'v')
+        return ('ctrl', 'v')
     
     def _normalize_key(self, key: str) -> str:
         """标准化按键名称"""
@@ -361,7 +376,13 @@ class ActionExecutor:
             'arrowright': 'right',
             'arrowup': 'up',
             'arrowdown': 'down',
-            'space': ' ',
+            'cmd': 'command',
+            'commandorcontrol': 'command',
+            'option': 'alt',
+            'return': 'enter',
+            'esc': 'escape',
+            'spacebar': 'space',
+            'space': 'space',
         }
         
         return key_map.get(key, key)

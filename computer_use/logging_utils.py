@@ -1,0 +1,85 @@
+"""
+本地上下文日志模块
+按任务写入 JSONL，便于回放每轮模型调用与执行结果
+"""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+
+class ContextLogger:
+    """按任务写入上下文日志。"""
+
+    def __init__(self, enabled: bool = True, log_dir: str = './logs'):
+        self.enabled = enabled
+        self.log_dir = Path(log_dir)
+        self.task_id: Optional[str] = None
+        self.log_path: Optional[Path] = None
+
+        if self.enabled:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+
+    def start_task(
+        self,
+        instruction: str,
+        model: str,
+        max_steps: int,
+        temperature: float
+    ) -> Optional[str]:
+        """开始一个新任务并创建日志文件。"""
+        if not self.enabled:
+            return None
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+        self.task_id = f'task_{timestamp}'
+        self.log_path = self.log_dir / f'{self.task_id}.jsonl'
+
+        self.log_event(
+            'task_start',
+            instruction=instruction,
+            model=model,
+            max_steps=max_steps,
+            temperature=temperature,
+        )
+
+        return self.task_id
+
+    def log_event(self, event: str, **payload: Any) -> None:
+        """写入一条 JSONL 记录。"""
+        if not self.enabled or self.log_path is None:
+            return
+
+        record: Dict[str, Any] = {
+            'event': event,
+            'timestamp': datetime.now().isoformat(timespec='milliseconds'),
+        }
+
+        if self.task_id is not None:
+            record['task_id'] = self.task_id
+
+        record.update(payload)
+
+        with self.log_path.open('a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+    def end_task(
+        self,
+        success: bool,
+        final_response: Optional[str] = None,
+        error: Optional[str] = None
+    ) -> None:
+        """结束当前任务。"""
+        self.log_event(
+            'task_end',
+            success=success,
+            final_response=final_response,
+            error=error,
+        )
+
+    @property
+    def current_log_path(self) -> Optional[str]:
+        if self.log_path is None:
+            return None
+        return str(self.log_path)

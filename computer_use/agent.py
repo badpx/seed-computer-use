@@ -3,17 +3,18 @@
 多轮自动执行直到任务完成
 """
 
+import io
 import time
 import base64
-from typing import Dict, Any, List, Optional, Generator
-from pathlib import Path
+from typing import Dict, Any, List, Optional
 
 from volcenginesdkarkruntime import Ark
 
 from .config import config
-from .screenshot import screenshot_manager, capture_screenshot
+from .screenshot import capture_screenshot
 from .action_parser import parse_action
 from .action_executor import ActionExecutor
+from .logging_utils import ContextLogger
 from .prompts import COMPUTER_USE_DOUBAO
 
 
@@ -30,6 +31,8 @@ class ComputerUseAgent:
         base_url: Optional[str] = None,
         temperature: Optional[float] = None,
         max_steps: Optional[int] = None,
+        save_context_log: Optional[bool] = None,
+        context_log_dir: Optional[str] = None,
         language: str = 'Chinese',
         verbose: bool = True
     ):
@@ -42,6 +45,8 @@ class ComputerUseAgent:
             base_url: API基础URL，默认从配置读取
             temperature: 温度参数，默认从配置读取
             max_steps: 最大执行步数，默认从配置读取
+            save_context_log: 是否保存上下文日志
+            context_log_dir: 上下文日志目录
             language: 提示词语言
             verbose: 是否打印详细日志
         """
@@ -51,6 +56,10 @@ class ComputerUseAgent:
         self.base_url = base_url or config.base_url
         self.temperature = temperature if temperature is not None else config.temperature
         self.max_steps = max_steps if max_steps is not None else config.max_steps
+        self.save_context_log = (
+            save_context_log if save_context_log is not None else config.save_context_log
+        )
+        self.context_log_dir = context_log_dir or config.context_log_dir
         self.language = language
         self.verbose = verbose
 
@@ -64,7 +73,14 @@ class ComputerUseAgent:
         
         # 执行历史
         self.history: List[Dict[str, Any]] = []
-        
+        self.conversation_messages: List[Dict[str, Any]] = []
+
+        # 上下文日志
+        self.context_logger = ContextLogger(
+            enabled=self.save_context_log,
+            log_dir=self.context_log_dir,
+        )
+
         # 当前步骤
         self.current_step = 0
         
@@ -72,6 +88,7 @@ class ComputerUseAgent:
             print(f"[初始化] Computer Use Agent")
             print(f"  模型: {self.model}")
             print(f"  最大步数: {self.max_steps}")
+            print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
             print(f"  语言: {self.language}")
     
     def run(self, instruction: str) -> Dict[str, Any]:
@@ -94,8 +111,25 @@ class ComputerUseAgent:
             'instruction': instruction,
             'steps': [],
             'error': None,
-            'final_response': None
+            'final_response': None,
+            'context_log_path': None,
         }
+
+        self.history = []
+        self.conversation_messages = []
+        self.current_step = 0
+        self.context_logger = ContextLogger(
+            enabled=self.save_context_log,
+            log_dir=self.context_log_dir,
+        )
+
+        self.context_logger.start_task(
+            instruction=instruction,
+            model=self.model,
+            max_steps=self.max_steps,
+            temperature=self.temperature,
+        )
+        result['context_log_path'] = self.context_logger.current_log_path
         
         try:
             # 多轮执行循环
@@ -113,35 +147,107 @@ class ComputerUseAgent:
                     print(f"  截图: {screenshot_path}")
                 
                 # 2. 调用模型
-                response = self._call_model(
+                text_input = self._build_text_input(
                     instruction=instruction,
-                    screenshot=screenshot,
-                    img_width=img_width,
-                    img_height=img_height
+                    step_no=self.current_step,
                 )
+
+                self.context_logger.log_event(
+                    'model_call',
+                    instruction=instruction,
+                    step=self.current_step,
+                    model=self.model,
+                    text_input=text_input,
+                    message_summary='1 system + text history + 1 current screenshot',
+                    screenshot_path=screenshot_path,
+                    screenshot_size=[img_width, img_height],
+                )
+
+                response = self._call_model(
+                    text_input=text_input,
+                    screenshot=screenshot,
+                )
+
+                self.context_logger.log_event(
+                    'model_response',
+                    instruction=instruction,
+                    step=self.current_step,
+                    raw_response=response,
+                )
+                self._append_user_input_message(text_input)
                 
                 if self.verbose:
                     print(f"  模型响应:\n{response}")
                 
                 # 3. 解析动作
-                action = parse_action(response)
-                
+                try:
+                    action = parse_action(response)
+                    thought_summary = action.get('thought', '')
+                    parsed_action = self._format_action(action)
+                except Exception as e:
+                    failure_reason = self._format_parse_failure_reason(e, response)
+                    step_record = self._build_step_record(
+                        step=self.current_step,
+                        screenshot_path=screenshot_path,
+                        model_input=text_input,
+                        response=response,
+                        action=None,
+                        thought_summary='',
+                        execution_status='failed',
+                        execution_result=None,
+                        failure_reason=failure_reason,
+                    )
+                    result['steps'].append(step_record)
+                    self._record_history_entry(step_record, parsed_action='')
+                    self._append_assistant_message(response)
+                    self._append_execution_feedback(step_record, parsed_action='')
+                    self.context_logger.log_event(
+                        'step_result',
+                        instruction=instruction,
+                        step=self.current_step,
+                        thought_summary='',
+                        parsed_action='',
+                        execution_status='failed',
+                        execution_result=None,
+                        failure_reason=failure_reason,
+                    )
+                    if self.verbose:
+                        print(f"  解析失败: {failure_reason}")
+                    continue
+
+                self._append_assistant_message(response)
+
                 if self.verbose:
                     print(f"  解析结果: {action['action_type']}")
-                
-                # 记录步骤
-                step_record = {
-                    'step': self.current_step,
-                    'screenshot': screenshot_path,
-                    'response': response,
-                    'action': action
-                }
-                result['steps'].append(step_record)
                 
                 # 4. 检查是否完成
                 if action['action_type'] == 'finished':
                     result['success'] = True
                     result['final_response'] = action['action_inputs'].get('content', '')
+                    step_record = self._build_step_record(
+                        step=self.current_step,
+                        screenshot_path=screenshot_path,
+                        model_input=text_input,
+                        response=response,
+                        action=action,
+                        thought_summary=thought_summary,
+                        execution_status='finished',
+                        execution_result=result['final_response'],
+                        failure_reason=None,
+                    )
+                    result['steps'].append(step_record)
+                    self._record_history_entry(step_record, parsed_action=parsed_action)
+                    self._append_execution_feedback(step_record, parsed_action=parsed_action)
+                    self.context_logger.log_event(
+                        'step_result',
+                        instruction=instruction,
+                        step=self.current_step,
+                        thought_summary=thought_summary,
+                        parsed_action=parsed_action,
+                        execution_status='finished',
+                        execution_result=result['final_response'],
+                        failure_reason=None,
+                    )
                     
                     if self.verbose:
                         print(f"\n{'='*60}")
@@ -157,15 +263,93 @@ class ComputerUseAgent:
                     verbose=self.verbose
                 )
                 
-                exec_result = executor.execute(action)
+                try:
+                    exec_result = executor.execute(action)
+                except Exception as e:
+                    failure_reason = str(e)
+                    step_record = self._build_step_record(
+                        step=self.current_step,
+                        screenshot_path=screenshot_path,
+                        model_input=text_input,
+                        response=response,
+                        action=action,
+                        thought_summary=thought_summary,
+                        execution_status='failed',
+                        execution_result=None,
+                        failure_reason=failure_reason,
+                    )
+                    result['steps'].append(step_record)
+                    self._record_history_entry(step_record, parsed_action=parsed_action)
+                    self._append_execution_feedback(step_record, parsed_action=parsed_action)
+                    self.context_logger.log_event(
+                        'step_result',
+                        instruction=instruction,
+                        step=self.current_step,
+                        thought_summary=thought_summary,
+                        parsed_action=parsed_action,
+                        execution_status='failed',
+                        execution_result=None,
+                        failure_reason=failure_reason,
+                    )
+                    if self.verbose:
+                        print(f"  执行失败: {failure_reason}")
+                    continue
                 
                 if exec_result == 'DONE':
                     result['success'] = True
+                    step_record = self._build_step_record(
+                        step=self.current_step,
+                        screenshot_path=screenshot_path,
+                        model_input=text_input,
+                        response=response,
+                        action=action,
+                        thought_summary=thought_summary,
+                        execution_status='finished',
+                        execution_result='DONE',
+                        failure_reason=None,
+                    )
+                    result['steps'].append(step_record)
+                    self._record_history_entry(step_record, parsed_action=parsed_action)
+                    self.context_logger.log_event(
+                        'step_result',
+                        instruction=instruction,
+                        step=self.current_step,
+                        thought_summary=thought_summary,
+                        parsed_action=parsed_action,
+                        execution_status='finished',
+                        execution_result='DONE',
+                        failure_reason=None,
+                    )
                     if self.verbose:
                         print(f"\n{'='*60}")
                         print(f"[任务完成]")
                         print(f"{'='*60}")
                     break
+
+                step_record = self._build_step_record(
+                    step=self.current_step,
+                    screenshot_path=screenshot_path,
+                    model_input=text_input,
+                    response=response,
+                    action=action,
+                    thought_summary=thought_summary,
+                    execution_status='success',
+                    execution_result=exec_result,
+                    failure_reason=None,
+                )
+                result['steps'].append(step_record)
+                self._record_history_entry(step_record, parsed_action=parsed_action)
+                self._append_execution_feedback(step_record, parsed_action=parsed_action)
+                self.context_logger.log_event(
+                    'step_result',
+                    instruction=instruction,
+                    step=self.current_step,
+                    thought_summary=thought_summary,
+                    parsed_action=parsed_action,
+                    execution_status='success',
+                    execution_result=exec_result,
+                    failure_reason=None,
+                )
                 
                 # 等待一小段时间，让操作生效
                 time.sleep(0.5)
@@ -182,48 +366,44 @@ class ComputerUseAgent:
                 print(f"\n[错误] {e}")
                 import traceback
                 traceback.print_exc()
+
+        self.context_logger.end_task(
+            success=result['success'],
+            final_response=result['final_response'],
+            error=result['error'],
+        )
         
         return result
     
     def _call_model(
         self,
-        instruction: str,
+        text_input: str,
         screenshot,
-        img_width: int,
-        img_height: int
     ) -> str:
         """
         调用模型进行推理
         
         Args:
-            instruction: 任务指令
             screenshot: 截图对象
-            img_width: 截图宽度
-            img_height: 截图高度
             
         Returns:
             str: 模型响应
         """
         # 编码截图
-        import io
-        import base64
-        
         img_buffer = io.BytesIO()
         screenshot.save(img_buffer, format='PNG')
         img_buffer.seek(0)
         base64_image = base64.b64encode(img_buffer.read()).decode('utf-8')
-        
-        # 构建系统提示词
-        system_prompt = COMPUTER_USE_DOUBAO.format(
-            instruction=instruction,
-            language=self.language
-        )
-        
-        # 构建消息
+
         messages = [
             {
+                'role': 'system',
+                'content': self._build_system_prompt(),
+            },
+            *self.conversation_messages,
+            {
                 'role': 'user',
-                'content': system_prompt
+                'content': text_input,
             },
             {
                 'role': 'user',
@@ -246,3 +426,138 @@ class ComputerUseAgent:
         )
         
         return response.choices[0].message.content
+
+    def _build_text_input(
+        self,
+        instruction: str,
+        step_no: int,
+    ) -> str:
+        """构建当前轮发送给模型的文本输入。"""
+        if step_no == 1:
+            return (
+                f"Current Task:\n{instruction}\n\n"
+                f"Current Step: {step_no}\n"
+                "Analyze the current screenshot and decide the next action."
+            )
+
+        return (
+            f"Current Step: {step_no}\n"
+            "Review the prior conversation, especially the execution feedback, "
+            "then analyze the current screenshot and decide the next action."
+        )
+
+    def _build_system_prompt(self) -> str:
+        """构建单次请求共用的 system prompt。"""
+        return COMPUTER_USE_DOUBAO.format(language=self.language)
+
+    def _format_action(self, action: Dict[str, Any]) -> str:
+        """将解析后的动作转换为稳定字符串。"""
+        action_type = action.get('action_type', '')
+        action_inputs = action.get('action_inputs', {})
+
+        if not action_inputs:
+            return f'{action_type}()'
+
+        params = ', '.join(
+            f"{key}={repr(value)}"
+            for key, value in action_inputs.items()
+        )
+        return f'{action_type}({params})'
+
+    def _format_parse_failure_reason(self, error: Exception, response: str) -> str:
+        """将解析失败原因整理成简洁单行文本。"""
+        message = ' '.join(str(error).split())
+        if message:
+            return self._truncate_text(message)
+
+        response_preview = ' '.join(response.split())
+        return f'无法解析动作: {self._truncate_text(response_preview)}'
+
+    def _truncate_text(self, text: str, max_length: int = 200) -> str:
+        """截断过长文本，避免错误信息污染日志和控制台。"""
+        if len(text) <= max_length:
+            return text
+        return f'{text[: max_length - 3]}...'
+
+    def _build_step_record(
+        self,
+        step: int,
+        screenshot_path: Optional[str],
+        model_input: str,
+        response: str,
+        action: Optional[Dict[str, Any]],
+        thought_summary: str,
+        execution_status: str,
+        execution_result: Optional[str],
+        failure_reason: Optional[str]
+    ) -> Dict[str, Any]:
+        """构建返回结果中的单步记录。"""
+        return {
+            'step': step,
+            'screenshot': screenshot_path,
+            'model_input': model_input,
+            'response': response,
+            'action': action,
+            'thought_summary': thought_summary,
+            'execution_status': execution_status,
+            'execution_result': execution_result,
+            'failure_reason': failure_reason,
+        }
+
+    def _record_history_entry(
+        self,
+        step_record: Dict[str, Any],
+        parsed_action: str
+    ) -> None:
+        """记录可回放的结构化历史。"""
+        self.history.append(
+            {
+                'step': step_record['step'],
+                'model_input_snapshot': step_record['model_input'],
+                'thought_summary': step_record['thought_summary'],
+                'parsed_action': parsed_action,
+                'execution_status': step_record['execution_status'],
+                'execution_result': step_record['execution_result'],
+                'failure_reason': step_record['failure_reason'],
+            }
+        )
+
+    def _append_assistant_message(self, response: str) -> None:
+        """将模型原始回复加入对话历史。"""
+        self.conversation_messages.append(
+            {
+                'role': 'assistant',
+                'content': response,
+            }
+        )
+
+    def _append_user_input_message(self, text_input: str) -> None:
+        """将本轮用户输入加入后续对话历史。"""
+        self.conversation_messages.append(
+            {
+                'role': 'user',
+                'content': text_input,
+            }
+        )
+
+    def _append_execution_feedback(
+        self,
+        step_record: Dict[str, Any],
+        parsed_action: str
+    ) -> None:
+        """将动作执行反馈作为用户消息加入对话历史。"""
+        lines = [
+            f"Step {step_record['step']} Execution Feedback",
+            f"Model Input: {step_record['model_input']}",
+            f"Thought Summary: {step_record['thought_summary'] or '(empty)'}",
+            f"Parsed Action: {parsed_action or '(unavailable)'}",
+            f"Execution Status: {step_record['execution_status']}",
+            f"Execution Result: {step_record['execution_result'] or '(none)'}",
+            f"Failure Reason: {step_record['failure_reason'] or '(none)'}",
+        ]
+        self.conversation_messages.append(
+            {
+                'role': 'user',
+                'content': '\n'.join(lines),
+            }
+        )

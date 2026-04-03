@@ -17,6 +17,8 @@ class Config:
         'ARK_BASE_URL': 'http://ark.cn-beijing.volces.com/api/v3',
         'SCREENSHOT_DIR': './screenshots',
         'SAVE_SCREENSHOT': 'true',
+        'CONTEXT_LOG_DIR': './logs',
+        'SAVE_CONTEXT_LOG': 'true',
         'MAX_STEPS': '20',
         'TEMPERATURE': '0.0',
         'COORDINATE_SCALE': '1000',
@@ -148,6 +150,16 @@ class Config:
     def screenshot_dir(self) -> str:
         """截图保存目录"""
         return self._config.get('SCREENSHOT_DIR', self.DEFAULTS['SCREENSHOT_DIR'])
+
+    @property
+    def save_context_log(self) -> bool:
+        """是否保存上下文日志"""
+        return self.get_bool('SAVE_CONTEXT_LOG', True)
+
+    @property
+    def context_log_dir(self) -> str:
+        """上下文日志目录"""
+        return self._config.get('CONTEXT_LOG_DIR', self.DEFAULTS['CONTEXT_LOG_DIR'])
     
     @property
     def coordinate_scale(self) -> int:

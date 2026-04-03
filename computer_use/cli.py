@@ -30,6 +30,8 @@ def print_config_info():
     print(f"  最大步数: {config.max_steps}")
     print(f"  保存截图: {'是' if config.save_screenshot else '否'}")
     print(f"  截图目录: {config.screenshot_dir}")
+    print(f"  上下文日志: {'是' if config.save_context_log else '否'}")
+    print(f"  日志目录: {config.context_log_dir}")
     print()
 
 
