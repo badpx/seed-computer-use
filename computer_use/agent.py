@@ -163,7 +163,7 @@ class ComputerUseAgent:
                     screenshot_size=[img_width, img_height],
                 )
 
-                response = self._call_model(
+                response_obj, response = self._call_model(
                     text_input=text_input,
                     screenshot=screenshot,
                 )
@@ -173,6 +173,7 @@ class ComputerUseAgent:
                     instruction=instruction,
                     step=self.current_step,
                     raw_response=response,
+                    usage=self._extract_usage(response_obj),
                 )
                 self._append_user_input_message(text_input)
                 
@@ -379,7 +380,7 @@ class ComputerUseAgent:
         self,
         text_input: str,
         screenshot,
-    ) -> str:
+    ) -> tuple[Any, str]:
         """
         调用模型进行推理
         
@@ -387,7 +388,7 @@ class ComputerUseAgent:
             screenshot: 截图对象
             
         Returns:
-            str: 模型响应
+            tuple[Any, str]: (完整响应对象, 模型响应文本)
         """
         # 编码截图
         img_buffer = io.BytesIO()
@@ -425,7 +426,7 @@ class ComputerUseAgent:
             temperature=self.temperature
         )
         
-        return response.choices[0].message.content
+        return response, response.choices[0].message.content
 
     def _build_text_input(
         self,
@@ -449,6 +450,50 @@ class ComputerUseAgent:
     def _build_system_prompt(self) -> str:
         """构建单次请求共用的 system prompt。"""
         return COMPUTER_USE_DOUBAO.format(language=self.language)
+
+    def _extract_usage(self, response: Any) -> Optional[Dict[str, Any]]:
+        """提取响应中的 token 使用量信息。"""
+        usage = getattr(response, 'usage', None)
+        if usage is None:
+            return None
+
+        usage_dict: Dict[str, Any] = {}
+        for field in (
+            'prompt_tokens',
+            'completion_tokens',
+            'total_tokens',
+            'prompt_tokens_details',
+            'completion_tokens_details',
+        ):
+            value = getattr(usage, field, None)
+            if value is None:
+                continue
+            usage_dict[field] = self._serialize_usage_value(value)
+
+        return usage_dict or None
+
+    def _serialize_usage_value(self, value: Any) -> Any:
+        """将 usage 对象转换为可写入 JSON 的结构。"""
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+
+        if isinstance(value, dict):
+            return {
+                key: self._serialize_usage_value(item)
+                for key, item in value.items()
+            }
+
+        if hasattr(value, 'model_dump'):
+            return value.model_dump(exclude_none=True)
+
+        if hasattr(value, '__dict__'):
+            return {
+                key: self._serialize_usage_value(item)
+                for key, item in vars(value).items()
+                if not key.startswith('_') and item is not None
+            }
+
+        return str(value)
 
     def _format_action(self, action: Dict[str, Any]) -> str:
         """将解析后的动作转换为稳定字符串。"""

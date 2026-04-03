@@ -23,9 +23,10 @@ class FakeScreenshot:
 
 
 class FakeResponse:
-    def __init__(self, content):
+    def __init__(self, content, usage=None):
         message = types.SimpleNamespace(content=content)
         self.choices = [types.SimpleNamespace(message=message)]
+        self.usage = usage
 
 
 class FakeCompletionAPI:
@@ -37,7 +38,10 @@ class FakeCompletionAPI:
         self._calls.append(kwargs)
         if not self._responses:
             raise AssertionError('No fake model responses left')
-        return FakeResponse(self._responses.pop(0))
+        item = self._responses.pop(0)
+        if isinstance(item, dict):
+            return FakeResponse(item['content'], usage=item.get('usage'))
+        return FakeResponse(item)
 
 
 class FakeArkClient:
@@ -202,7 +206,19 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('Failure Reason: 无法解析动作', joined_text)
 
     def test_context_log_writes_jsonl_without_image_base64(self):
-        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+        usage = types.SimpleNamespace(
+            prompt_tokens=123,
+            completion_tokens=45,
+            total_tokens=168,
+            prompt_tokens_details=types.SimpleNamespace(cached_tokens=10),
+            completion_tokens_details=types.SimpleNamespace(reasoning_tokens=7),
+        )
+        self.responses[:] = [
+            {
+                'content': "Thought: done\nAction: finished(content='ok')",
+                'usage': usage,
+            }
+        ]
 
         agent = self._make_agent(
             save_context_log=True,
@@ -224,11 +240,22 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('task_end', [record['event'] for record in records])
 
         model_call = next(record for record in records if record['event'] == 'model_call')
+        model_response = next(record for record in records if record['event'] == 'model_response')
         self.assertEqual(model_call['message_summary'], '1 system + text history + 1 current screenshot')
         self.assertEqual(model_call['screenshot_size'], [1280, 720])
         self.assertIn('Current Step: 1', model_call['text_input'])
         self.assertNotIn('You are a GUI agent', model_call['text_input'])
         self.assertNotIn('base64', json.dumps(model_call, ensure_ascii=False).lower())
+        self.assertEqual(
+            model_response['usage'],
+            {
+                'prompt_tokens': 123,
+                'completion_tokens': 45,
+                'total_tokens': 168,
+                'prompt_tokens_details': {'cached_tokens': 10},
+                'completion_tokens_details': {'reasoning_tokens': 7},
+            },
+        )
 
     def test_parse_failure_prints_basic_error_detail(self):
         self.responses[:] = ['this is not a valid action']
@@ -257,6 +284,25 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(result['steps'][0]['execution_status'], 'failed')
         self.assertIn('无法解析动作:', result['steps'][0]['failure_reason'])
         self.assertNotIn('\n', result['steps'][0]['failure_reason'])
+
+    def test_context_log_omits_usage_when_response_has_no_usage(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(
+            save_context_log=True,
+            context_log_dir=str(self.log_dir),
+        )
+        result = agent.run('Write a context log without usage')
+
+        self.assertTrue(result['success'])
+        log_files = list(self.log_dir.glob('task_*.jsonl'))
+        records = [
+            json.loads(line)
+            for line in log_files[0].read_text(encoding='utf-8').splitlines()
+        ]
+
+        model_response = next(record for record in records if record['event'] == 'model_response')
+        self.assertIsNone(model_response['usage'])
 
 
 if __name__ == '__main__':
