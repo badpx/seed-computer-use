@@ -319,7 +319,7 @@ class AgentContextTests(unittest.TestCase):
         task_start = next(record for record in records if record['event'] == 'task_start')
         model_call = next(record for record in records if record['event'] == 'model_call')
         model_response = next(record for record in records if record['event'] == 'model_response')
-        self.assertEqual(task_start['max_context_screenshots'], 5)
+        self.assertEqual(task_start['max_context_screenshots'], agent.max_context_screenshots)
         self.assertEqual(task_start['include_execution_feedback'], True)
         self.assertEqual(
             model_call['message_summary'],
@@ -472,7 +472,7 @@ class AgentContextTests(unittest.TestCase):
 
     def test_agent_passes_natural_scroll_override_to_executor(self):
         self.responses[:] = [
-            "Thought: scroll\nAction: scroll(direction='down', start_box='<point>500 500</point>')",
+            "Thought: scroll\nAction: scroll(direction='down', point='<point>500 500</point>')",
             "Thought: done\nAction: finished(content='ok')",
         ]
         self.exec_outcomes[:] = ['scrolled']

@@ -176,17 +176,19 @@ class ActionExecutor:
         clicks: int = 1
     ) -> str:
         """执行点击操作"""
-        start_box = action_inputs.get('start_box')
+        point = action_inputs.get('point')
+        if point is None:
+            point = action_inputs.get('start_box')
         
-        if start_box is None:
+        if point is None:
             # 尝试直接获取 x, y
             x = action_inputs.get('x')
             y = action_inputs.get('y')
             if x is None or y is None:
-                raise ValueError("点击操作需要 start_box 或 x, y 参数")
+                raise ValueError("点击操作需要 point 或 x, y 参数")
             abs_x, abs_y = self._convert_coordinates(x, y)
         else:
-            abs_x, abs_y = self._get_coordinates_from_box(start_box)
+            abs_x, abs_y = self._get_coordinates_from_box(point)
         
         # 执行点击
         if clicks == 2:
@@ -209,16 +211,18 @@ class ActionExecutor:
     
     def _execute_hover(self, action_inputs: Dict[str, Any]) -> str:
         """执行悬停操作"""
-        start_box = action_inputs.get('start_box')
+        point = action_inputs.get('point')
+        if point is None:
+            point = action_inputs.get('start_box')
         
-        if start_box is None:
+        if point is None:
             x = action_inputs.get('x')
             y = action_inputs.get('y')
             if x is None or y is None:
-                raise ValueError("悬停操作需要 start_box 或 x, y 参数")
+                raise ValueError("悬停操作需要 point 或 x, y 参数")
             abs_x, abs_y = self._convert_coordinates(x, y)
         else:
-            abs_x, abs_y = self._get_coordinates_from_box(start_box)
+            abs_x, abs_y = self._get_coordinates_from_box(point)
         
         pyautogui.moveTo(abs_x, abs_y)
         
@@ -229,18 +233,22 @@ class ActionExecutor:
     
     def _execute_drag(self, action_inputs: Dict[str, Any]) -> str:
         """执行拖拽操作"""
-        start_box = action_inputs.get('start_box')
-        end_box = action_inputs.get('end_box')
+        start_point = action_inputs.get('start_point')
+        end_point = action_inputs.get('end_point')
+        if start_point is None:
+            start_point = action_inputs.get('start_box')
+        if end_point is None:
+            end_point = action_inputs.get('end_box')
         
-        if start_box is None or end_box is None:
-            raise ValueError("拖拽操作需要 start_box 和 end_box 参数")
+        if start_point is None or end_point is None:
+            raise ValueError("拖拽操作需要 start_point 和 end_point 参数")
         
-        start_x, start_y = self._get_coordinates_from_box(start_box)
-        end_x, end_y = self._get_coordinates_from_box(end_box)
+        start_x, start_y = self._get_coordinates_from_box(start_point)
+        end_x, end_y = self._get_coordinates_from_box(end_point)
         
         # 执行拖拽
         pyautogui.moveTo(start_x, start_y)
-        pyautogui.dragTo(end_x, end_y, duration=0.5)
+        pyautogui.dragTo(end_x, end_y, duration=0.5, button='left')
         
         result = f"拖拽 ({start_x}, {start_y}) -> ({end_x}, {end_y})"
         if self.verbose:
@@ -336,7 +344,9 @@ class ActionExecutor:
     
     def _execute_scroll(self, action_inputs: Dict[str, Any]) -> str:
         """执行滚动操作"""
-        start_box = action_inputs.get('start_box')
+        point = action_inputs.get('point')
+        if point is None:
+            point = action_inputs.get('start_box')
         direction = action_inputs.get('direction', 'down').lower()
         steps = action_inputs.get('steps', 50)
         
@@ -348,9 +358,9 @@ class ActionExecutor:
         else:
             scroll_amount = -scroll_amount if reverse_direction else scroll_amount
         
-        if start_box is not None:
+        if point is not None:
             # 在指定位置滚动
-            x, y = self._get_coordinates_from_box(start_box)
+            x, y = self._get_coordinates_from_box(point)
             pyautogui.moveTo(x, y)
             pyautogui.scroll(scroll_amount)
             result = f"滚动{direction} {abs(scroll_amount)}步: ({x}, {y})"

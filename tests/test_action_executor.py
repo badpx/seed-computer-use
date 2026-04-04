@@ -14,6 +14,7 @@ class FakePyAutoGUI(types.ModuleType):
         self.press_calls = []
         self.click_calls = []
         self.move_to_calls = []
+        self.drag_to_calls = []
         self.scroll_calls = []
 
     def hotkey(self, *keys):
@@ -29,7 +30,7 @@ class FakePyAutoGUI(types.ModuleType):
         self.move_to_calls.append((args, kwargs))
 
     def dragTo(self, *args, **kwargs):
-        pass
+        self.drag_to_calls.append((args, kwargs))
 
     def keyDown(self, *args, **kwargs):
         pass
@@ -129,7 +130,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
                 'action_inputs': {
                     'direction': 'down',
                     'steps': 50,
-                    'start_box': [498, 558],
+                    'point': [498, 558],
                 },
             }
         )
@@ -152,7 +153,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             {
                 'action_type': 'click',
                 'action_inputs': {
-                    'start_box': [250, 125],
+                    'point': [250, 125],
                 },
             }
         )
@@ -162,6 +163,31 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             [((500, 250), {'button': 'left', 'clicks': 1})],
         )
         self.assertEqual(result, '单击 (500, 250)')
+
+    def test_drag_uses_left_button_explicitly(self):
+        executor = self.action_executor.ActionExecutor(
+            image_width=1000,
+            image_height=1000,
+            coordinate_space='pixel',
+            verbose=False,
+        )
+
+        result = executor.execute(
+            {
+                'action_type': 'drag',
+                'action_inputs': {
+                    'start_point': [242, 475],
+                    'end_point': [540, 475],
+                },
+            }
+        )
+
+        self.assertEqual(self.fake_pyautogui.move_to_calls, [((242, 475), {})])
+        self.assertEqual(
+            self.fake_pyautogui.drag_to_calls,
+            [((540, 475), {'duration': 0.5, 'button': 'left'})],
+        )
+        self.assertEqual(result, '拖拽 (242, 475) -> (540, 475)')
 
     def test_scroll_respects_natural_scroll_setting(self):
         executor = self.action_executor.ActionExecutor(
@@ -178,7 +204,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
                 'action_inputs': {
                     'direction': 'down',
                     'steps': 50,
-                    'start_box': [498, 558],
+                    'point': [498, 558],
                 },
             }
         )
@@ -221,7 +247,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             {
                 'action_type': 'left_double',
                 'action_inputs': {
-                    'start_box': [250, 750],
+                    'point': [250, 750],
                 },
             }
         )
@@ -245,7 +271,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             {
                 'action_type': 'click',
                 'action_inputs': {
-                    'start_box': [0.25, 0.5],
+                    'point': [0.25, 0.5],
                 },
             }
         )
@@ -269,7 +295,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             {
                 'action_type': 'click',
                 'action_inputs': {
-                    'start_box': [25, 50],
+                    'point': [25, 50],
                 },
             }
         )
@@ -292,7 +318,7 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             {
                 'action_type': 'click',
                 'action_inputs': {
-                    'start_box': [25, 50],
+                    'point': [25, 50],
                 },
             }
         )

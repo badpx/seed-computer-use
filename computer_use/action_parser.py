@@ -155,38 +155,23 @@ class ActionParser:
                 if (value.startswith('"') and value.endswith('"')) or \
                    (value.startswith("'") and value.endswith("'")):
                     value = value[1:-1]
-                
-                # 处理 point 标记
-                if '<point>' in value and '</point>' in value:
-                    point_match = re.search(
-                        rf'<point>({NUMBER_PATTERN})\s+({NUMBER_PATTERN})</point>',
+
+                # start_point/end_point 允许使用 <point> 或同名标签
+                if key in {'start_point', 'end_point'}:
+                    point_value = self._extract_point_value(
                         value,
+                        allowed_tags=('point', key),
                     )
-                    if point_match:
-                        value = [
-                            float(point_match.group(1)),
-                            float(point_match.group(2)),
-                        ]
-                        params['start_box'] = value
+                    if point_value is not None:
+                        params[key] = point_value
                         continue
-                
-                # 处理 start_point/end_point
-                if '<start_point>' in value or '<end_point>' in value:
-                    point_match = re.search(
-                        rf'<(?:start|end)_point>({NUMBER_PATTERN})\s+({NUMBER_PATTERN})</(?:start|end)_point>',
-                        value,
-                    )
-                    if point_match:
-                        value = [
-                            float(point_match.group(1)),
-                            float(point_match.group(2)),
-                        ]
-                        if key == 'start_point':
-                            params['start_box'] = value
-                            continue
-                        if key == 'end_point':
-                            params['end_box'] = value
-                            continue
+
+                # 处理通用 point 标记
+                if key == 'point':
+                    point_value = self._extract_point_value(value)
+                    if point_value is not None:
+                        params['point'] = point_value
+                        continue
 
                 if key in {'x', 'y', 'steps'}:
                     try:
@@ -197,6 +182,24 @@ class ActionParser:
                 params[key] = value
         
         return params
+
+    def _extract_point_value(
+        self,
+        value: str,
+        allowed_tags: Tuple[str, ...] = ('point',),
+    ) -> Optional[list]:
+        """从标签文本中提取坐标值。"""
+        for tag in allowed_tags:
+            point_match = re.search(
+                rf'<{tag}>({NUMBER_PATTERN})\s+({NUMBER_PATTERN})</{tag}>',
+                value,
+            )
+            if point_match:
+                return [
+                    float(point_match.group(1)),
+                    float(point_match.group(2)),
+                ]
+        return None
     
     def _split_params(self, params_str: str) -> list:
         """
