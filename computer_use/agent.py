@@ -139,20 +139,7 @@ class ComputerUseAgent:
         self.current_step = 0
         
         if self.verbose:
-            print(f"[初始化] Computer Use Agent")
-            print(f"  模型: {self.model}")
-            print(f"  最大步数: {self.max_steps}")
-            print(f"  思考模式: {self.thinking_mode}")
-            print(f"  思考档位: {self.reasoning_effort}")
-            print(f"  坐标空间: {self.coordinate_space}")
-            if self.coordinate_space == 'relative':
-                print(f"  坐标量程: {self.coordinate_scale}")
-            print(f"  上下文截图窗口: {self.max_context_screenshots}")
-            print(f"  注入执行反馈: {'启用' if self.include_execution_feedback else '禁用'}")
-            print(f"  日志完整上下文: {'启用' if self.log_full_messages else '禁用'}")
-            print(f"  自然滚动: {'启用' if self.natural_scroll else '禁用'}")
-            print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
-            print(f"  语言: {self.language}")
+            self._print_init_info()
     
     def run(self, instruction: str) -> Dict[str, Any]:
         """
@@ -529,6 +516,22 @@ class ComputerUseAgent:
         )
         
         return result
+
+    def _print_init_info(self) -> None:
+        """打印当前运行的生效参数。"""
+        print(f"[生效参数]")
+        print(f"  模型: {self.model}")
+        print(f"  最大步数: {self.max_steps}")
+        print(f"  思考: {self.thinking_mode} / {self.reasoning_effort}")
+        print(f"  坐标空间: {self.coordinate_space}")
+        if self.coordinate_space == 'relative':
+            print(f"  坐标量程: {self.coordinate_scale}")
+        print(f"  上下文截图窗口: {self.max_context_screenshots}")
+        print(f"  注入执行反馈: {'启用' if self.include_execution_feedback else '禁用'}")
+        print(f"  日志完整上下文: {'启用' if self.log_full_messages else '禁用'}")
+        print(f"  自然滚动: {'启用' if self.natural_scroll else '禁用'}")
+        print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
+        print(f"  语言: {self.language}")
     
     def _call_model(
         self,

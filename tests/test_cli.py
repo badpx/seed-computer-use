@@ -1,9 +1,11 @@
 import builtins
+import io
 import importlib
 import sys
 import tempfile
 import types
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -164,6 +166,43 @@ class CliPromptTests(unittest.TestCase):
             False,
         )
         self.assertEqual(fake_agent_instances[0].kwargs['log_full_messages'], True)
+
+    def test_single_task_mode_prints_config_info_only_in_debug_mode(self):
+        fake_agent_module = types.ModuleType('computer_use.agent')
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def run(self, instruction):
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': instruction,
+                }
+
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'):
+            normal_output = io.StringIO()
+            with redirect_stdout(normal_output):
+                self.cli.single_task_mode(
+                    instruction='普通模式',
+                    verbose=True,
+                    log_full_messages=False,
+                )
+
+            debug_output = io.StringIO()
+            with redirect_stdout(debug_output):
+                self.cli.single_task_mode(
+                    instruction='调试模式',
+                    verbose=True,
+                    log_full_messages=True,
+                )
+
+        self.assertNotIn('[配置信息]', normal_output.getvalue())
+        self.assertIn('[配置信息]', debug_output.getvalue())
 
 
 if __name__ == '__main__':

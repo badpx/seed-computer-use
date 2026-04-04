@@ -352,6 +352,21 @@ class AgentContextTests(unittest.TestCase):
             output.getvalue(),
         )
 
+    def test_init_output_prints_effective_parameters(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            self._make_agent(verbose=True)
+
+        printed = output.getvalue()
+        self.assertIn('[生效参数]', printed)
+        self.assertIn('模型: fake-model', printed)
+        self.assertIn('最大步数:', printed)
+        self.assertIn('思考: disabled / minimal', printed)
+        self.assertIn('日志完整上下文', printed)
+        self.assertIn('语言: Chinese', printed)
+        self.assertNotIn('[初始化] Computer Use Agent', printed)
+
     def test_parse_failure_reason_is_condensed_to_single_line(self):
         self.responses[:] = [
             "Thought: check\nAction:\n```json\n{\"foo\": \"bar\"}\n```"

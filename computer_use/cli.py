@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .compat import ensure_supported_python
-from .config import config, resolve_thinking_settings, normalize_coordinate_space
+from .config import config
 
 
 DEFAULT_HISTORY_FILE = Path.home() / '.computer_use_history'
@@ -61,58 +61,18 @@ def print_banner():
 
 
 def print_config_info(
-    thinking_mode: Optional[str] = None,
-    reasoning_effort: Optional[str] = None,
-    coordinate_space: Optional[str] = None,
-    coordinate_scale: Optional[float] = None,
-    max_context_screenshots: Optional[int] = None,
-    include_execution_feedback: Optional[bool] = None,
+    log_full_messages: bool = False,
 ):
-    """打印配置信息"""
-    reasoning_effort_explicit = (
-        reasoning_effort is not None or config.has_explicit_value('REASONING_EFFORT')
-    )
-    effective_thinking_mode, effective_reasoning_effort = resolve_thinking_settings(
-        thinking_mode or config.thinking_mode,
-        reasoning_effort or config.reasoning_effort,
-        reasoning_effort_explicit=reasoning_effort_explicit,
-    )
-    effective_coordinate_space = normalize_coordinate_space(
-        coordinate_space or config.coordinate_space
-    )
-    effective_coordinate_scale = (
-        config.coordinate_scale if coordinate_scale is None else coordinate_scale
-    )
-    effective_max_context_screenshots = (
-        config.max_context_screenshots
-        if max_context_screenshots is None else max_context_screenshots
-    )
-    if effective_max_context_screenshots < 1:
-        effective_max_context_screenshots = config.max_context_screenshots
-    effective_include_execution_feedback = (
-        config.include_execution_feedback
-        if include_execution_feedback is None else include_execution_feedback
-    )
+    """打印调试用配置信息。"""
     print("[配置信息]")
-    print(f"  模型: {config.model}")
     print(f"  API地址: {config.base_url}")
-    print(f"  最大步数: {config.max_steps}")
-    print(f"  思考模式: {effective_thinking_mode}")
-    print(f"  思考档位: {effective_reasoning_effort}")
-    print(f"  坐标空间: {effective_coordinate_space}")
-    if effective_coordinate_space == 'relative':
-        print(f"  坐标量程: {effective_coordinate_scale}")
-    print(f"  上下文截图窗口: {effective_max_context_screenshots}")
-    print(
-        f"  注入执行反馈: {'是' if effective_include_execution_feedback else '否'}"
-    )
     save_screenshot = config.save_screenshot
     print(f"  保存截图: {'是' if save_screenshot else '否'}")
     if save_screenshot:
         print(f"  截图目录: {config.screenshot_dir}")
-    print(f"  自然滚动: {'是' if config.natural_scroll else '否'}")
     print(f"  上下文日志: {'是' if config.save_context_log else '否'}")
     print(f"  日志目录: {config.context_log_dir}")
+    print(f"  完整上下文日志: {'是' if log_full_messages else '否'}")
     print()
 
 
@@ -146,14 +106,8 @@ def interactive_mode(
         verbose: 是否打印详细日志
     """
     print_banner()
-    print_config_info(
-        thinking_mode=thinking_mode,
-        reasoning_effort=reasoning_effort,
-        coordinate_space=coordinate_space,
-        coordinate_scale=coordinate_scale,
-        max_context_screenshots=max_context_screenshots,
-        include_execution_feedback=include_execution_feedback,
-    )
+    if log_full_messages:
+        print_config_info(log_full_messages=log_full_messages)
     
     print("[交互模式]")
     print("请输入您的指令（输入 'quit' 或 'exit' 退出）\n")
@@ -263,6 +217,8 @@ def single_task_mode(
     """
     if verbose:
         print_banner()
+        if log_full_messages:
+            print_config_info(log_full_messages=log_full_messages)
         print(f"[任务] {instruction}\n")
 
     ensure_supported_python()
