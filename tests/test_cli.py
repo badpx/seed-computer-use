@@ -129,6 +129,42 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(fake_agent_instances[0].run_calls, ['粘贴的一长串指令'])
         self.assertEqual(mock_input.call_count, 2)
 
+    def test_single_task_mode_passes_context_window_options_to_agent(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': instruction,
+                }
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'):
+            self.cli.single_task_mode(
+                instruction='测试上下文参数',
+                max_context_screenshots=3,
+                include_execution_feedback=False,
+                log_full_messages=True,
+                verbose=False,
+            )
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertEqual(fake_agent_instances[0].kwargs['max_context_screenshots'], 3)
+        self.assertEqual(
+            fake_agent_instances[0].kwargs['include_execution_feedback'],
+            False,
+        )
+        self.assertEqual(fake_agent_instances[0].kwargs['log_full_messages'], True)
+
 
 if __name__ == '__main__':
     unittest.main()

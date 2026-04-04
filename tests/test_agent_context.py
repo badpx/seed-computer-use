@@ -152,14 +152,14 @@ class AgentContextTests(unittest.TestCase):
             **kwargs,
         )
 
-    def test_second_model_call_keeps_single_system_prompt_and_replays_text_history_only(self):
+    def test_second_model_call_keeps_single_system_prompt_and_replays_recent_screenshot_context(self):
         self.responses[:] = [
             "Thought: first step\nAction: wait()",
             "Thought: done\nAction: finished(content='done')",
         ]
         self.exec_outcomes[:] = ['waited']
 
-        agent = self._make_agent()
+        agent = self._make_agent(include_execution_feedback=True)
         result = agent.run('Open the calculator')
 
         self.assertTrue(result['success'])
@@ -179,18 +179,80 @@ class AgentContextTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(system_messages), 1)
-        self.assertEqual(len(image_messages), 1)
-        self.assertIn('Open the calculator', user_texts[0])
-        self.assertIn('Current Step: 2', user_texts[-1])
-        self.assertTrue(
-            any('Execution Result: waited' in text for text in user_texts)
-        )
+        self.assertIn('Open the calculator', system_messages[0]['content'])
+        self.assertEqual(len(image_messages), 2)
+        self.assertEqual(len(user_texts), 1)
+        self.assertIn('Execution Status: success', user_texts[0])
+        self.assertIn('Execution Result: waited', user_texts[0])
         self.assertIn("Action: wait()", second_messages[2]['content'])
         self.assertEqual(second_messages[0]['role'], 'system')
         self.assertEqual(second_messages[1]['role'], 'user')
         self.assertEqual(second_messages[2]['role'], 'assistant')
-        self.assertEqual(second_messages[3]['role'], 'user')
         self.assertEqual(second_messages[-1]['content'][0]['type'], 'image_url')
+
+    def test_context_window_keeps_all_assistant_responses_and_latest_five_screenshots(self):
+        self.responses[:] = [
+            f"Thought: step {index}\nAction: wait()"
+            for index in range(1, 8)
+        ] + [
+            "Thought: done\nAction: finished(content='ok')"
+        ]
+        self.exec_outcomes[:] = [f'waited-{index}' for index in range(1, 8)]
+
+        agent = self._make_agent(max_steps=8, max_context_screenshots=5)
+        result = agent.run('Keep recent screenshots only')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 8)
+
+        final_messages = self.calls[-1]['messages']
+        assistant_messages = [
+            message['content']
+            for message in final_messages
+            if message['role'] == 'assistant'
+        ]
+        image_message_indexes = [
+            index
+            for index, message in enumerate(final_messages)
+            if isinstance(message.get('content'), list)
+        ]
+
+        self.assertEqual(len(assistant_messages), 7)
+        self.assertEqual(len(image_message_indexes), 5)
+        self.assertEqual(
+            assistant_messages[:3],
+            [
+                "Thought: step 1\nAction: wait()",
+                "Thought: step 2\nAction: wait()",
+                "Thought: step 3\nAction: wait()",
+            ],
+        )
+        self.assertEqual(final_messages[image_message_indexes[0] - 1]['role'], 'assistant')
+        self.assertEqual(
+            final_messages[image_message_indexes[0] - 1]['content'],
+            "Thought: step 3\nAction: wait()",
+        )
+        self.assertEqual(final_messages[-1]['content'][0]['type'], 'image_url')
+
+    def test_execution_feedback_can_be_disabled(self):
+        self.responses[:] = [
+            "Thought: first step\nAction: wait()",
+            "Thought: done\nAction: finished(content='done')",
+        ]
+        self.exec_outcomes[:] = ['waited']
+
+        agent = self._make_agent(include_execution_feedback=False)
+        result = agent.run('Run without execution feedback')
+
+        self.assertTrue(result['success'])
+        second_messages = self.calls[1]['messages']
+        user_texts = [
+            message['content']
+            for message in second_messages
+            if message['role'] == 'user' and isinstance(message.get('content'), str)
+        ]
+
+        self.assertEqual(user_texts, [])
 
     def test_parse_failure_is_recorded_and_next_round_receives_failure_reason(self):
         self.responses[:] = [
@@ -198,7 +260,7 @@ class AgentContextTests(unittest.TestCase):
             "Thought: now finish\nAction: finished(content='done')",
         ]
 
-        agent = self._make_agent()
+        agent = self._make_agent(include_execution_feedback=True)
         result = agent.run('Recover from parse errors')
 
         self.assertTrue(result['success'])
@@ -232,6 +294,7 @@ class AgentContextTests(unittest.TestCase):
         agent = self._make_agent(
             save_context_log=True,
             context_log_dir=str(self.log_dir),
+            include_execution_feedback=True,
         )
         result = agent.run('Write a context log')
 
@@ -248,13 +311,20 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('model_call', [record['event'] for record in records])
         self.assertIn('task_end', [record['event'] for record in records])
 
+        task_start = next(record for record in records if record['event'] == 'task_start')
         model_call = next(record for record in records if record['event'] == 'model_call')
         model_response = next(record for record in records if record['event'] == 'model_response')
-        self.assertEqual(model_call['message_summary'], '1 system + text history + 1 current screenshot')
+        self.assertEqual(task_start['max_context_screenshots'], 5)
+        self.assertEqual(task_start['include_execution_feedback'], True)
+        self.assertEqual(
+            model_call['message_summary'],
+            '1 system + 0 historical assistant + 0 feedback + 1 screenshots',
+        )
+        self.assertEqual(model_call['retained_screenshot_count'], 1)
         self.assertEqual(model_call['screenshot_size'], [1280, 720])
-        self.assertIn('Current Step: 1', model_call['text_input'])
-        self.assertNotIn('You are a GUI agent', model_call['text_input'])
+        self.assertEqual(model_call['text_input'], '')
         self.assertNotIn('base64', json.dumps(model_call, ensure_ascii=False).lower())
+        self.assertNotIn('messages', model_call)
         self.assertEqual(
             model_response['usage'],
             {
@@ -314,6 +384,35 @@ class AgentContextTests(unittest.TestCase):
         model_response = next(record for record in records if record['event'] == 'model_response')
         self.assertIsNone(model_response['usage'])
         self.assertEqual(model_response['reasoning'], '')
+
+    def test_context_log_verbose_includes_full_messages(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(
+            save_context_log=True,
+            context_log_dir=str(self.log_dir),
+            log_full_messages=True,
+        )
+        result = agent.run('Write a verbose context log')
+
+        self.assertTrue(result['success'])
+        log_files = list(self.log_dir.glob('task_*.jsonl'))
+        records = [
+            json.loads(line)
+            for line in log_files[0].read_text(encoding='utf-8').splitlines()
+        ]
+
+        task_start = next(record for record in records if record['event'] == 'task_start')
+        model_call = next(record for record in records if record['event'] == 'model_call')
+        self.assertEqual(task_start['log_full_messages'], True)
+        self.assertIn('messages', model_call)
+        self.assertEqual(model_call['messages'][0]['role'], 'system')
+        self.assertIn('Write a verbose context log', model_call['messages'][0]['content'])
+        self.assertEqual(model_call['messages'][-1]['content'][0]['type'], 'image_url')
+        self.assertIn(
+            'data:image/png;base64,',
+            model_call['messages'][-1]['content'][0]['image_url']['url'],
+        )
 
     def test_agent_passes_natural_scroll_override_to_executor(self):
         self.responses[:] = [

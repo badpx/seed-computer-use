@@ -65,6 +65,8 @@ def print_config_info(
     reasoning_effort: Optional[str] = None,
     coordinate_space: Optional[str] = None,
     coordinate_scale: Optional[float] = None,
+    max_context_screenshots: Optional[int] = None,
+    include_execution_feedback: Optional[bool] = None,
 ):
     """打印配置信息"""
     reasoning_effort_explicit = (
@@ -81,6 +83,16 @@ def print_config_info(
     effective_coordinate_scale = (
         config.coordinate_scale if coordinate_scale is None else coordinate_scale
     )
+    effective_max_context_screenshots = (
+        config.max_context_screenshots
+        if max_context_screenshots is None else max_context_screenshots
+    )
+    if effective_max_context_screenshots < 1:
+        effective_max_context_screenshots = config.max_context_screenshots
+    effective_include_execution_feedback = (
+        config.include_execution_feedback
+        if include_execution_feedback is None else include_execution_feedback
+    )
     print("[配置信息]")
     print(f"  模型: {config.model}")
     print(f"  API地址: {config.base_url}")
@@ -90,6 +102,10 @@ def print_config_info(
     print(f"  坐标空间: {effective_coordinate_space}")
     if effective_coordinate_space == 'relative':
         print(f"  坐标量程: {effective_coordinate_scale}")
+    print(f"  上下文截图窗口: {effective_max_context_screenshots}")
+    print(
+        f"  注入执行反馈: {'是' if effective_include_execution_feedback else '否'}"
+    )
     save_screenshot = config.save_screenshot
     print(f"  保存截图: {'是' if save_screenshot else '否'}")
     if save_screenshot:
@@ -107,6 +123,9 @@ def interactive_mode(
     reasoning_effort: Optional[str] = None,
     coordinate_space: Optional[str] = None,
     coordinate_scale: Optional[float] = None,
+    max_context_screenshots: Optional[int] = None,
+    include_execution_feedback: Optional[bool] = None,
+    log_full_messages: bool = False,
     natural_scroll: Optional[bool] = None,
     verbose: bool = True
 ):
@@ -120,6 +139,9 @@ def interactive_mode(
         reasoning_effort: 方舟思考档位
         coordinate_space: 坐标空间
         coordinate_scale: 相对坐标量程
+        max_context_screenshots: 多轮上下文截图窗口
+        include_execution_feedback: 是否注入执行反馈
+        log_full_messages: 是否在上下文日志中记录完整 messages
         natural_scroll: 是否使用自然滚动
         verbose: 是否打印详细日志
     """
@@ -129,6 +151,8 @@ def interactive_mode(
         reasoning_effort=reasoning_effort,
         coordinate_space=coordinate_space,
         coordinate_scale=coordinate_scale,
+        max_context_screenshots=max_context_screenshots,
+        include_execution_feedback=include_execution_feedback,
     )
     
     print("[交互模式]")
@@ -151,6 +175,9 @@ def interactive_mode(
             reasoning_effort=reasoning_effort,
             coordinate_space=coordinate_space,
             coordinate_scale=coordinate_scale,
+            max_context_screenshots=max_context_screenshots,
+            include_execution_feedback=include_execution_feedback,
+            log_full_messages=log_full_messages,
             natural_scroll=natural_scroll,
             verbose=verbose
         )
@@ -208,6 +235,9 @@ def single_task_mode(
     reasoning_effort: Optional[str] = None,
     coordinate_space: Optional[str] = None,
     coordinate_scale: Optional[float] = None,
+    max_context_screenshots: Optional[int] = None,
+    include_execution_feedback: Optional[bool] = None,
+    log_full_messages: bool = False,
     natural_scroll: Optional[bool] = None,
     verbose: bool = True
 ) -> Dict[str, Any]:
@@ -222,6 +252,9 @@ def single_task_mode(
         reasoning_effort: 方舟思考档位
         coordinate_space: 坐标空间
         coordinate_scale: 相对坐标量程
+        max_context_screenshots: 多轮上下文截图窗口
+        include_execution_feedback: 是否注入执行反馈
+        log_full_messages: 是否在上下文日志中记录完整 messages
         natural_scroll: 是否使用自然滚动
         verbose: 是否打印详细日志
         
@@ -243,6 +276,9 @@ def single_task_mode(
         reasoning_effort=reasoning_effort,
         coordinate_space=coordinate_space,
         coordinate_scale=coordinate_scale,
+        max_context_screenshots=max_context_screenshots,
+        include_execution_feedback=include_execution_feedback,
+        log_full_messages=log_full_messages,
         natural_scroll=natural_scroll,
         verbose=verbose
     )
@@ -332,6 +368,30 @@ def main():
         type=float,
         help='设置 relative 坐标的量程，例如 1 / 100 / 1000（默认从配置读取）'
     )
+
+    parser.add_argument(
+        '--max-context-screenshots',
+        type=int,
+        help='多轮上下文中最多保留的截图数量（包含当前轮，默认从配置读取）'
+    )
+
+    execution_feedback_group = parser.add_mutually_exclusive_group()
+    execution_feedback_group.add_argument(
+        '--include-execution-feedback',
+        action='store_true',
+        help='启用执行反馈注入'
+    )
+    execution_feedback_group.add_argument(
+        '--no-execution-feedback',
+        action='store_true',
+        help='禁用执行反馈注入'
+    )
+
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='在上下文日志的 model_call 事件中记录完整 messages'
+    )
     
     parser.add_argument(
         '--screenshot-dir',
@@ -398,6 +458,9 @@ def main():
     reasoning_effort = None
     coordinate_space = None
     coordinate_scale = None
+    max_context_screenshots = None
+    include_execution_feedback = None
+    log_full_messages = args.verbose
     if args.natural_scroll:
         natural_scroll = True
     elif args.traditional_scroll:
@@ -411,6 +474,12 @@ def main():
         coordinate_space = args.coordinate_space
     if args.coordinate_scale is not None:
         coordinate_scale = args.coordinate_scale
+    if args.max_context_screenshots is not None:
+        max_context_screenshots = args.max_context_screenshots
+    if args.include_execution_feedback:
+        include_execution_feedback = True
+    elif args.no_execution_feedback:
+        include_execution_feedback = False
     
     try:
         if args.instruction:
@@ -423,6 +492,9 @@ def main():
                 reasoning_effort=reasoning_effort,
                 coordinate_space=coordinate_space,
                 coordinate_scale=coordinate_scale,
+                max_context_screenshots=max_context_screenshots,
+                include_execution_feedback=include_execution_feedback,
+                log_full_messages=log_full_messages,
                 natural_scroll=natural_scroll,
                 verbose=verbose
             )
@@ -438,6 +510,9 @@ def main():
                 reasoning_effort=reasoning_effort,
                 coordinate_space=coordinate_space,
                 coordinate_scale=coordinate_scale,
+                max_context_screenshots=max_context_screenshots,
+                include_execution_feedback=include_execution_feedback,
+                log_full_messages=log_full_messages,
                 natural_scroll=natural_scroll,
                 verbose=verbose
             )

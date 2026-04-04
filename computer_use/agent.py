@@ -6,7 +6,8 @@
 import io
 import time
 import base64
-from typing import Dict, Any, List, Optional
+from collections import deque
+from typing import Deque, Dict, Any, List, Optional
 
 from volcenginesdkarkruntime import Ark
 
@@ -34,6 +35,9 @@ class ComputerUseAgent:
         reasoning_effort: Optional[str] = None,
         coordinate_space: Optional[str] = None,
         coordinate_scale: Optional[float] = None,
+        max_context_screenshots: Optional[int] = None,
+        include_execution_feedback: Optional[bool] = None,
+        log_full_messages: bool = False,
         max_steps: Optional[int] = None,
         natural_scroll: Optional[bool] = None,
         save_context_log: Optional[bool] = None,
@@ -53,6 +57,9 @@ class ComputerUseAgent:
             reasoning_effort: 方舟思考档位，minimal / low / medium / high
             coordinate_space: 坐标空间，relative / pixel
             coordinate_scale: 相对坐标量程
+            max_context_screenshots: 多轮上下文中最多保留的截图数量（含当前轮）
+            include_execution_feedback: 是否注入历史执行反馈
+            log_full_messages: 是否在上下文日志中记录完整 messages
             max_steps: 最大执行步数，默认从配置读取
             natural_scroll: 是否使用自然滚动
             save_context_log: 是否保存上下文日志
@@ -85,6 +92,18 @@ class ComputerUseAgent:
         )
         if self.coordinate_scale <= 0:
             raise ValueError("coordinate_scale 必须大于 0")
+        self.max_context_screenshots = (
+            config.max_context_screenshots
+            if max_context_screenshots is None else int(max_context_screenshots)
+        )
+        if self.max_context_screenshots < 1:
+            self.max_context_screenshots = config.max_context_screenshots
+        self.include_execution_feedback = (
+            include_execution_feedback
+            if include_execution_feedback is not None
+            else config.include_execution_feedback
+        )
+        self.log_full_messages = log_full_messages
         self.max_steps = max_steps if max_steps is not None else config.max_steps
         self.natural_scroll = (
             natural_scroll if natural_scroll is not None else config.natural_scroll
@@ -106,7 +125,9 @@ class ComputerUseAgent:
         
         # 执行历史
         self.history: List[Dict[str, Any]] = []
-        self.conversation_messages: List[Dict[str, Any]] = []
+        self.assistant_history: List[Dict[str, Any]] = []
+        self.execution_feedback_history: List[Optional[Dict[str, Any]]] = []
+        self.recent_screenshot_messages: Deque[Dict[str, Any]] = deque()
 
         # 上下文日志
         self.context_logger = ContextLogger(
@@ -126,6 +147,9 @@ class ComputerUseAgent:
             print(f"  坐标空间: {self.coordinate_space}")
             if self.coordinate_space == 'relative':
                 print(f"  坐标量程: {self.coordinate_scale}")
+            print(f"  上下文截图窗口: {self.max_context_screenshots}")
+            print(f"  注入执行反馈: {'启用' if self.include_execution_feedback else '禁用'}")
+            print(f"  日志完整上下文: {'启用' if self.log_full_messages else '禁用'}")
             print(f"  自然滚动: {'启用' if self.natural_scroll else '禁用'}")
             print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
             print(f"  语言: {self.language}")
@@ -158,7 +182,9 @@ class ComputerUseAgent:
         task_start_time = time.perf_counter()
 
         self.history = []
-        self.conversation_messages = []
+        self.assistant_history = []
+        self.execution_feedback_history = []
+        self.recent_screenshot_messages = deque()
         self.current_step = 0
         self.context_logger = ContextLogger(
             enabled=self.save_context_log,
@@ -174,6 +200,9 @@ class ComputerUseAgent:
             reasoning_effort=self.reasoning_effort,
             coordinate_space=self.coordinate_space,
             coordinate_scale=self.coordinate_scale,
+            max_context_screenshots=self.max_context_screenshots,
+            include_execution_feedback=self.include_execution_feedback,
+            log_full_messages=self.log_full_messages,
         )
         result['context_log_path'] = self.context_logger.current_log_path
         
@@ -189,34 +218,46 @@ class ComputerUseAgent:
                 # 1. 截图
                 screenshot, screenshot_path = capture_screenshot()
                 img_width, img_height = screenshot.size
+                current_screenshot_message = self._build_screenshot_message(screenshot)
                 
                 if self.verbose and screenshot_path:
                     print(f"  截图: {screenshot_path}")
                 
                 # 2. 调用模型
-                text_input = self._build_text_input(
-                    instruction=instruction,
-                    step_no=self.current_step,
+                text_input = ''
+                messages, message_summary, retained_screenshot_count = (
+                    self._build_request_messages(
+                        instruction=instruction,
+                        current_screenshot_message=current_screenshot_message,
+                    )
                 )
+
+                model_call_payload = {
+                    'instruction': instruction,
+                    'step': self.current_step,
+                    'model': self.model,
+                    'thinking_mode': self.thinking_mode,
+                    'reasoning_effort': self.reasoning_effort,
+                    'coordinate_space': self.coordinate_space,
+                    'coordinate_scale': self.coordinate_scale,
+                    'max_context_screenshots': self.max_context_screenshots,
+                    'include_execution_feedback': self.include_execution_feedback,
+                    'text_input': text_input,
+                    'message_summary': message_summary,
+                    'retained_screenshot_count': retained_screenshot_count,
+                    'screenshot_path': screenshot_path,
+                    'screenshot_size': [img_width, img_height],
+                }
+                if self.log_full_messages:
+                    model_call_payload['messages'] = messages
 
                 self.context_logger.log_event(
                     'model_call',
-                    instruction=instruction,
-                    step=self.current_step,
-                    model=self.model,
-                    thinking_mode=self.thinking_mode,
-                    reasoning_effort=self.reasoning_effort,
-                    coordinate_space=self.coordinate_space,
-                    coordinate_scale=self.coordinate_scale,
-                    text_input=text_input,
-                    message_summary='1 system + text history + 1 current screenshot',
-                    screenshot_path=screenshot_path,
-                    screenshot_size=[img_width, img_height],
+                    **model_call_payload,
                 )
 
                 response_obj, response = self._call_model(
-                    text_input=text_input,
-                    screenshot=screenshot,
+                    messages=messages,
                 )
 
                 self.context_logger.log_event(
@@ -227,7 +268,6 @@ class ComputerUseAgent:
                     raw_response=response,
                     usage=self._extract_usage(response_obj),
                 )
-                self._append_user_input_message(text_input)
                 
                 if self.verbose:
                     print(f"  模型响应:\n{response}")
@@ -254,8 +294,12 @@ class ComputerUseAgent:
                     )
                     result['steps'].append(step_record)
                     self._record_history_entry(step_record, parsed_action='')
-                    self._append_assistant_message(response)
-                    self._append_execution_feedback(step_record, parsed_action='')
+                    self._append_context_turn(
+                        screenshot_message=current_screenshot_message,
+                        response=response,
+                        step_record=step_record,
+                        parsed_action='',
+                    )
                     self.context_logger.log_event(
                         'step_result',
                         instruction=instruction,
@@ -274,8 +318,6 @@ class ComputerUseAgent:
                             f"  步耗时: {self._format_elapsed_time(step_elapsed_seconds)}"
                         )
                     continue
-
-                self._append_assistant_message(response)
 
                 if self.verbose:
                     print(f"  解析结果: {action['action_type']}")
@@ -299,7 +341,6 @@ class ComputerUseAgent:
                     )
                     result['steps'].append(step_record)
                     self._record_history_entry(step_record, parsed_action=parsed_action)
-                    self._append_execution_feedback(step_record, parsed_action=parsed_action)
                     self.context_logger.log_event(
                         'step_result',
                         instruction=instruction,
@@ -356,7 +397,12 @@ class ComputerUseAgent:
                     )
                     result['steps'].append(step_record)
                     self._record_history_entry(step_record, parsed_action=parsed_action)
-                    self._append_execution_feedback(step_record, parsed_action=parsed_action)
+                    self._append_context_turn(
+                        screenshot_message=current_screenshot_message,
+                        response=response,
+                        step_record=step_record,
+                        parsed_action=parsed_action,
+                    )
                     self.context_logger.log_event(
                         'step_result',
                         instruction=instruction,
@@ -431,7 +477,12 @@ class ComputerUseAgent:
                 )
                 result['steps'].append(step_record)
                 self._record_history_entry(step_record, parsed_action=parsed_action)
-                self._append_execution_feedback(step_record, parsed_action=parsed_action)
+                self._append_context_turn(
+                    screenshot_message=current_screenshot_message,
+                    response=response,
+                    step_record=step_record,
+                    parsed_action=parsed_action,
+                )
                 self.context_logger.log_event(
                     'step_result',
                     instruction=instruction,
@@ -481,47 +532,17 @@ class ComputerUseAgent:
     
     def _call_model(
         self,
-        text_input: str,
-        screenshot,
+        messages: List[Dict[str, Any]],
     ) -> tuple[Any, str]:
         """
         调用模型进行推理
         
         Args:
-            screenshot: 截图对象
+            messages: 完整请求消息
             
         Returns:
             tuple[Any, str]: (完整响应对象, 模型响应文本)
         """
-        # 编码截图
-        img_buffer = io.BytesIO()
-        screenshot.save(img_buffer, format='PNG')
-        img_buffer.seek(0)
-        base64_image = base64.b64encode(img_buffer.read()).decode('utf-8')
-
-        messages = [
-            {
-                'role': 'system',
-                'content': self._build_system_prompt(),
-            },
-            *self.conversation_messages,
-            {
-                'role': 'user',
-                'content': text_input,
-            },
-            {
-                'role': 'user',
-                'content': [
-                    {
-                        'type': 'image_url',
-                        'image_url': {
-                            'url': f'data:image/png;base64,{base64_image}'
-                        }
-                    }
-                ]
-            }
-        ]
-        
         # 调用模型
         response = self.client.chat.completions.create(
             model=self.model,
@@ -535,28 +556,12 @@ class ComputerUseAgent:
         
         return response, response.choices[0].message.content
 
-    def _build_text_input(
-        self,
-        instruction: str,
-        step_no: int,
-    ) -> str:
-        """构建当前轮发送给模型的文本输入。"""
-        if step_no == 1:
-            return (
-                f"Current Task:\n{instruction}\n\n"
-                f"Current Step: {step_no}\n"
-                "Analyze the current screenshot and decide the next action."
-            )
-
-        return (
-            f"Current Step: {step_no}\n"
-            "Review the prior conversation, especially the execution feedback, "
-            "then analyze the current screenshot and decide the next action."
-        )
-
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, instruction: str) -> str:
         """构建单次请求共用的 system prompt。"""
-        return COMPUTER_USE_DOUBAO.format(language=self.language)
+        return COMPUTER_USE_DOUBAO.format(
+            instruction=instruction,
+            language=self.language,
+        )
 
     def _extract_usage(self, response: Any) -> Optional[Dict[str, Any]]:
         """提取响应中的 token 使用量信息。"""
@@ -630,6 +635,62 @@ class ComputerUseAgent:
         return {
             'reasoning': reasoning.strip(),
         }
+
+    def _build_screenshot_message(self, screenshot: Any) -> Dict[str, Any]:
+        """将截图编码成单条 user image_url 消息。"""
+        img_buffer = io.BytesIO()
+        screenshot.save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        base64_image = base64.b64encode(img_buffer.read()).decode('utf-8')
+        return {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': f'data:image/png;base64,{base64_image}'
+                    }
+                }
+            ],
+        }
+
+    def _build_request_messages(
+        self,
+        instruction: str,
+        current_screenshot_message: Dict[str, Any],
+    ) -> tuple[List[Dict[str, Any]], str, int]:
+        """组装发送给模型的 messages。"""
+        retained_screenshot_items = list(self.recent_screenshot_messages)
+        retained_start = len(self.assistant_history) - len(retained_screenshot_items)
+        retained_feedback_count = 0
+
+        messages: List[Dict[str, Any]] = [
+            {
+                'role': 'system',
+                'content': self._build_system_prompt(instruction),
+            }
+        ]
+
+        if retained_start > 0:
+            messages.extend(self.assistant_history[:retained_start])
+
+        for offset, screenshot_message in enumerate(retained_screenshot_items):
+            turn_index = retained_start + offset
+            messages.append(screenshot_message)
+            messages.append(self.assistant_history[turn_index])
+            feedback_message = self.execution_feedback_history[turn_index]
+            if self.include_execution_feedback and feedback_message is not None:
+                messages.append(feedback_message)
+                retained_feedback_count += 1
+
+        messages.append(current_screenshot_message)
+
+        retained_screenshot_count = len(retained_screenshot_items) + 1
+        message_summary = (
+            f'1 system + {len(self.assistant_history)} historical assistant + '
+            f'{retained_feedback_count} feedback + {retained_screenshot_count} screenshots'
+        )
+        return messages, message_summary, retained_screenshot_count
 
     def _format_parse_failure_reason(self, error: Exception, response: str) -> str:
         """将解析失败原因整理成简洁单行文本。"""
@@ -705,30 +766,12 @@ class ComputerUseAgent:
             }
         )
 
-    def _append_assistant_message(self, response: str) -> None:
-        """将模型原始回复加入对话历史。"""
-        self.conversation_messages.append(
-            {
-                'role': 'assistant',
-                'content': response,
-            }
-        )
-
-    def _append_user_input_message(self, text_input: str) -> None:
-        """将本轮用户输入加入后续对话历史。"""
-        self.conversation_messages.append(
-            {
-                'role': 'user',
-                'content': text_input,
-            }
-        )
-
-    def _append_execution_feedback(
+    def _build_execution_feedback_message(
         self,
         step_record: Dict[str, Any],
         parsed_action: str
-    ) -> None:
-        """将动作执行反馈作为用户消息加入对话历史。"""
+    ) -> Dict[str, Any]:
+        """构建动作执行反馈消息。"""
         lines = [
             f"Step {step_record['step']} Execution Feedback",
             f"Model Input: {step_record['model_input']}",
@@ -738,9 +781,38 @@ class ComputerUseAgent:
             f"Execution Result: {step_record['execution_result'] or '(none)'}",
             f"Failure Reason: {step_record['failure_reason'] or '(none)'}",
         ]
-        self.conversation_messages.append(
+        return {
+            'role': 'user',
+            'content': '\n'.join(lines),
+        }
+
+    def _append_context_turn(
+        self,
+        screenshot_message: Dict[str, Any],
+        response: str,
+        step_record: Dict[str, Any],
+        parsed_action: str,
+    ) -> None:
+        """将本轮上下文写入历史。"""
+        self.assistant_history.append(
             {
-                'role': 'user',
-                'content': '\n'.join(lines),
+                'role': 'assistant',
+                'content': response,
             }
         )
+
+        feedback_message: Optional[Dict[str, Any]] = None
+        if self.include_execution_feedback:
+            feedback_message = self._build_execution_feedback_message(
+                step_record,
+                parsed_action,
+            )
+        self.execution_feedback_history.append(feedback_message)
+
+        historical_screenshot_limit = max(0, self.max_context_screenshots - 1)
+        if historical_screenshot_limit <= 0:
+            return
+
+        while len(self.recent_screenshot_messages) >= historical_screenshot_limit:
+            self.recent_screenshot_messages.popleft()
+        self.recent_screenshot_messages.append(screenshot_message)

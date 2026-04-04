@@ -105,6 +105,8 @@ python -m computer_use "打开浏览器"
 | 思考档位 | `REASONING_EFFORT` | `medium` | 方舟思考档位，可选 `minimal` / `low` / `medium` / `high` |
 | 坐标空间 | `COORDINATE_SPACE` | `relative` | 坐标空间，可选 `relative` / `pixel` |
 | 坐标量程 | `COORDINATE_SCALE` | `1000` | `relative` 坐标的量程，例如 `1` / `100` / `1000` |
+| 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中最多保留的截图数量，包含当前轮 |
+| 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将历史执行结果和失败原因注入多轮上下文 |
 | 最大步数 | `MAX_STEPS` | `20` | 最大执行步数 |
 | 保存截图 | `SAVE_SCREENSHOT` | `false` | 是否保存截图 |
 | 截图目录 | `SCREENSHOT_DIR` | `./screenshots` | 截图保存目录 |
@@ -126,6 +128,8 @@ THINKING_MODE=auto
 REASONING_EFFORT=medium
 COORDINATE_SPACE=relative
 COORDINATE_SCALE=1000
+MAX_CONTEXT_SCREENSHOTS=5
+INCLUDE_EXECUTION_FEEDBACK=false
 MAX_STEPS=20
 
 # 截图配置
@@ -145,17 +149,17 @@ CONTEXT_LOG_DIR=./logs
 每一轮调用方舟模型时，代理会发送：
 
 - 单独一份 system 提示词
-- 当前任务内此前所有轮次累积下来的文本消息
-- 当前截图（仅当前轮）
+- 当前任务内此前所有 assistant 历史响应
+- 最近 `N` 张截图对应的图片消息，默认最多 5 张，包含当前轮
+- 可选的历史执行反馈文本
 
-累积的文本消息会包含：
+上下文裁剪规则：
 
-- 之前每轮发给模型的 user 输入
-- 模型原始 `Thought`/`Action` 回复
-- 每轮执行结果
-- 每轮失败原因
+- assistant 历史响应默认全部保留
+- 图片消息只保留最近 `MAX_CONTEXT_SCREENSHOTS` 张，包含当前截图
+- 执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启
 
-历史截图不会回传给模型，也不会重复注入 system 提示词；截图保存默认关闭，如果通过配置或 CLI 显式启用，本地会保留截图路径、尺寸以及每轮模型上下文，方便调试。
+历史截图优先保存在限长内存队列中，不依赖本地截图文件回放；截图保存默认关闭，如果通过配置或 CLI 显式启用，本地会额外保留截图路径、尺寸以及每轮模型上下文，方便调试。
 
 ## CLI 参数
 
@@ -179,6 +183,10 @@ python -m computer_use [指令] [选项]
 | `--reasoning-effort <level>` | `-r` | 设置方舟思考档位，取值 `minimal` / `low` / `medium` / `high` |
 | `--coordinate-space <space>` | - | 设置坐标空间，取值 `relative` / `pixel` |
 | `--coordinate-scale <value>` | - | 设置 `relative` 坐标量程，例如 `1` / `100` / `1000` |
+| `--max-context-screenshots <count>` | - | 设置多轮上下文中保留的截图数量，包含当前轮 |
+| `--include-execution-feedback` | - | 启用执行反馈注入 |
+| `--no-execution-feedback` | - | 禁用执行反馈注入 |
+| `--verbose` | - | 在上下文日志的 `model_call` 事件中记录完整 `messages` |
 | `--save-screenshot` | - | 启用截图保存 |
 | `--no-screenshot` | - | 禁用截图保存 |
 | `--screenshot-dir` | - | 指定截图保存目录 |
@@ -202,6 +210,15 @@ python -m computer_use "打开微信" --model doubao-seed-1-6-vision-250815
 
 # 指定最大步数
 python -m computer_use "搜索 Python 教程" --max-steps 10
+
+# 保留最近 3 张截图上下文
+python -m computer_use "分析页面状态" --max-context-screenshots 3
+
+# 关闭执行反馈注入
+python -m computer_use "打开浏览器" --no-execution-feedback
+
+# 在上下文日志中记录完整 messages
+python -m computer_use "分析页面状态" --verbose
 
 # 显式启用思考模式
 python -m computer_use "分析这个页面并给出下一步操作" --thinking enabled

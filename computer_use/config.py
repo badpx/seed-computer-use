@@ -89,6 +89,8 @@ class Config:
         'REASONING_EFFORT': 'medium',
         'COORDINATE_SPACE': 'relative',
         'COORDINATE_SCALE': '1000',
+        'MAX_CONTEXT_SCREENSHOTS': '5',
+        'INCLUDE_EXECUTION_FEEDBACK': 'false',
         'MAX_PIXELS': '12845056',  # 16384 * 28 * 28
         'MIN_PIXELS': '78400',     # 100 * 28 * 28
     }
@@ -260,7 +262,7 @@ class Config:
         return self._config.get('CONTEXT_LOG_DIR', self.DEFAULTS['CONTEXT_LOG_DIR'])
     
     @property
-    def coordinate_scale(self) -> int:
+    def coordinate_scale(self) -> float:
         """相对坐标的量程。"""
         scale = self.get_float('COORDINATE_SCALE', 1000.0)
         if scale <= 0:
@@ -274,6 +276,19 @@ class Config:
             self._config.get('COORDINATE_SPACE'),
             default=self.DEFAULTS['COORDINATE_SPACE'],
         )
+
+    @property
+    def max_context_screenshots(self) -> int:
+        """多轮上下文中最多保留的截图数量（包含当前轮）。"""
+        count = self.get_int('MAX_CONTEXT_SCREENSHOTS', 5)
+        if count < 1:
+            return 5
+        return count
+
+    @property
+    def include_execution_feedback(self) -> bool:
+        """是否将执行反馈注入多轮上下文。"""
+        return self.get_bool('INCLUDE_EXECUTION_FEEDBACK', False)
 
     @property
     def thinking_mode(self) -> str:

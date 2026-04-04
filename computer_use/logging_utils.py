@@ -31,6 +31,9 @@ class ContextLogger:
         reasoning_effort: Optional[str] = None,
         coordinate_space: Optional[str] = None,
         coordinate_scale: Optional[float] = None,
+        max_context_screenshots: Optional[int] = None,
+        include_execution_feedback: Optional[bool] = None,
+        log_full_messages: Optional[bool] = None,
     ) -> Optional[str]:
         """开始一个新任务并创建日志文件。"""
         if not self.enabled:
@@ -50,6 +53,9 @@ class ContextLogger:
             reasoning_effort=reasoning_effort,
             coordinate_space=coordinate_space,
             coordinate_scale=coordinate_scale,
+            max_context_screenshots=max_context_screenshots,
+            include_execution_feedback=include_execution_feedback,
+            log_full_messages=log_full_messages,
         )
 
         return self.task_id
