@@ -38,6 +38,18 @@ class ActionParserCoordinateTests(unittest.TestCase):
         self.assertEqual(parsed['action_inputs']['x'], 0.25)
         self.assertEqual(parsed['action_inputs']['y'], 0.75)
 
+    def test_extract_finished_action_from_natural_language_response(self):
+        parsed = parse_action(
+            "太好了！现在，多余的中间横线已经擦掉了，完全符合要求，任务完成！"
+            " finished(content='已在浏览器的在线画板中间完成回字的正确绘制')"
+        )
+
+        self.assertEqual(parsed['action_type'], 'finished')
+        self.assertEqual(
+            parsed['action_inputs']['content'],
+            '已在浏览器的在线画板中间完成回字的正确绘制',
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

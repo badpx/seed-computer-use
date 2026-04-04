@@ -91,8 +91,12 @@ class ActionParser:
         
         if action_match:
             return action_match.group(1).strip()
-        
-        # 如果没有匹配到 Action: 标记，尝试直接解析动作
+
+        # 如果没有匹配到 Action: 标记，尝试从整段文本中提取最后一个合法动作
+        extracted_action = self._extract_last_action_call(response)
+        if extracted_action:
+            return extracted_action
+
         return response.strip()
     
     def _parse_action(self, action_str: str) -> Tuple[str, Dict[str, Any]]:
@@ -124,6 +128,50 @@ class ActionParser:
         action_inputs = self._parse_params(params_str)
         
         return action_type, action_inputs
+
+    def _extract_last_action_call(self, response: str) -> Optional[str]:
+        """从自然语言响应中提取最后一个动作调用。"""
+        action_pattern = '|'.join(re.escape(action) for action in self.ACTION_TYPES)
+        matches = list(
+            re.finditer(rf'\b(?:{action_pattern})\s*\(', response, re.IGNORECASE)
+        )
+        for match in reversed(matches):
+            action_call = self._extract_balanced_call(response, match.start())
+            if action_call:
+                return action_call.strip()
+        return None
+
+    def _extract_balanced_call(self, text: str, start_index: int) -> Optional[str]:
+        """从指定位置开始提取括号平衡的动作调用。"""
+        in_quote = None
+        escaped = False
+        depth = 0
+
+        for index in range(start_index, len(text)):
+            char = text[index]
+            if in_quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == '\\':
+                    escaped = True
+                elif char == in_quote:
+                    in_quote = None
+                continue
+
+            if char in {'"', "'"}:
+                in_quote = char
+                continue
+
+            if char == '(':
+                depth += 1
+                continue
+
+            if char == ')':
+                depth -= 1
+                if depth == 0:
+                    return text[start_index:index + 1]
+
+        return None
     
     def _parse_params(self, params_str: str) -> Dict[str, Any]:
         """
