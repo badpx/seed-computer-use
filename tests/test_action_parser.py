@@ -50,6 +50,12 @@ class ActionParserCoordinateTests(unittest.TestCase):
             '已在浏览器的在线画板中间完成回字的正确绘制',
         )
 
+    def test_parse_wait_seconds_as_float(self):
+        parsed = parse_action("Action: wait(seconds=12)")
+
+        self.assertEqual(parsed['action_type'], 'wait')
+        self.assertEqual(parsed['action_inputs']['seconds'], 12.0)
+
 
 if __name__ == '__main__':
     unittest.main()

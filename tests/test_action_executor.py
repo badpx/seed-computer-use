@@ -54,10 +54,12 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
         self.fake_pyperclip = types.ModuleType('pyperclip')
         self.fake_pyperclip.copied_text = None
         self.fake_pyperclip.copy = self._copy_to_clipboard
+        self.sleep_calls = []
         sys.modules['pyautogui'] = self.fake_pyautogui
         sys.modules['pyperclip'] = self.fake_pyperclip
         sys.modules.pop('computer_use.action_executor', None)
         self.action_executor = importlib.import_module('computer_use.action_executor')
+        self.action_executor.time.sleep = lambda seconds: self.sleep_calls.append(seconds)
 
     def _copy_to_clipboard(self, text):
         self.fake_pyperclip.copied_text = text
@@ -328,6 +330,57 @@ class ActionExecutorHotkeyTests(unittest.TestCase):
             [((25, 50), {'button': 'left', 'clicks': 1})],
         )
         self.assertEqual(result, '单击 (25, 50)')
+
+    def test_wait_uses_explicit_seconds(self):
+        executor = self.action_executor.ActionExecutor(
+            image_width=200,
+            image_height=100,
+            verbose=False,
+        )
+
+        result = executor.execute(
+            {
+                'action_type': 'wait',
+                'action_inputs': {'seconds': 7},
+            }
+        )
+
+        self.assertEqual(self.sleep_calls, [7.0])
+        self.assertEqual(result, '等待 7 秒')
+
+    def test_wait_clamps_values_below_one_second(self):
+        executor = self.action_executor.ActionExecutor(
+            image_width=200,
+            image_height=100,
+            verbose=False,
+        )
+
+        result = executor.execute(
+            {
+                'action_type': 'wait',
+                'action_inputs': {'seconds': 0},
+            }
+        )
+
+        self.assertEqual(self.sleep_calls, [1.0])
+        self.assertEqual(result, '等待 1 秒')
+
+    def test_wait_clamps_values_above_sixty_seconds(self):
+        executor = self.action_executor.ActionExecutor(
+            image_width=200,
+            image_height=100,
+            verbose=False,
+        )
+
+        result = executor.execute(
+            {
+                'action_type': 'wait',
+                'action_inputs': {'seconds': 120},
+            }
+        )
+
+        self.assertEqual(self.sleep_calls, [60.0])
+        self.assertEqual(result, '等待 60 秒')
 
 
 if __name__ == '__main__':

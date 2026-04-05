@@ -7,6 +7,7 @@ import re
 from typing import Dict, Any, Tuple, Optional
 
 NUMBER_PATTERN = r"-?(?:\d+(?:\.\d+)?|\.\d+)"
+NUMERIC_PARAM_KEYS = {'x', 'y', 'steps', 'seconds', 'duration', 'time', 'wait_time'}
 
 
 class ActionParser:
@@ -221,7 +222,7 @@ class ActionParser:
                         params['point'] = point_value
                         continue
 
-                if key in {'x', 'y', 'steps'}:
+                if key in NUMERIC_PARAM_KEYS:
                     try:
                         value = float(value)
                     except ValueError:

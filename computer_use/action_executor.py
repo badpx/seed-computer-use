@@ -111,7 +111,7 @@ class ActionExecutor:
             return self._execute_scroll(action_inputs)
         
         elif action_type == 'wait':
-            return self._execute_wait()
+            return self._execute_wait(action_inputs)
         
         elif action_type == 'finished':
             return self._execute_finished(action_inputs)
@@ -373,11 +373,26 @@ class ActionExecutor:
             print(f"  [完成] {result}")
         return result
     
-    def _execute_wait(self) -> str:
+    def _execute_wait(self, action_inputs: Dict[str, Any]) -> str:
         """执行等待操作"""
-        wait_time = 5
+        raw_wait_time = (
+            action_inputs.get('seconds',
+            action_inputs.get('duration',
+            action_inputs.get('time',
+            action_inputs.get('wait_time', 5))))
+        )
+        try:
+            wait_time = float(raw_wait_time)
+        except (TypeError, ValueError):
+            raise ValueError("等待操作需要合法的 seconds 参数")
+
+        wait_time = min(60.0, max(1.0, wait_time))
         time.sleep(wait_time)
-        result = f"等待 {wait_time} 秒"
+        if wait_time.is_integer():
+            wait_time_text = str(int(wait_time))
+        else:
+            wait_time_text = str(wait_time)
+        result = f"等待 {wait_time_text} 秒"
         if self.verbose:
             print(f"  [完成] {result}")
         return result
