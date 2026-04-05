@@ -97,8 +97,8 @@ class AgentContextTests(unittest.TestCase):
         self.executor_inits = []
         self.capture_index = 0
         self.log_dir = Path(self.temp_dir.name) / 'logs'
-        self.screenshot_dir = Path(self.temp_dir.name) / 'screens'
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        self.capture_dir = Path(self.temp_dir.name) / 'screens'
+        self.capture_dir.mkdir(parents=True, exist_ok=True)
 
         self.agent_module = self._load_agent_module()
 
@@ -110,7 +110,7 @@ class AgentContextTests(unittest.TestCase):
         screenshot_stub.screenshot_manager = object()
         screenshot_stub.capture_screenshot = lambda *args, **kwargs: (
             FakeScreenshot(),
-            str(self.screenshot_dir / 'stub.png'),
+            None,
         )
 
         action_executor_stub = types.ModuleType('computer_use.action_executor')
@@ -152,9 +152,9 @@ class AgentContextTests(unittest.TestCase):
 
     def _fake_capture(self):
         self.capture_index += 1
-        screenshot_path = self.screenshot_dir / f'step_{self.capture_index}.png'
+        screenshot_path = self.capture_dir / f'step_{self.capture_index}.png'
         FakeScreenshot().save(screenshot_path)
-        return FakeScreenshot(), str(screenshot_path)
+        return FakeScreenshot(), None
 
     def _build_executor(self):
         test_case = self
@@ -355,6 +355,7 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(model_call['text_input'], '')
         self.assertNotIn('base64', json.dumps(model_call, ensure_ascii=False).lower())
         self.assertNotIn('messages', model_call)
+        self.assertFalse((self.log_dir / 'screenshots').exists())
         self.assertEqual(
             model_response['usage'],
             {
@@ -454,10 +455,9 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(model_call['messages'][0]['role'], 'system')
         self.assertIn('Write a verbose context log', model_call['messages'][0]['content'])
         self.assertEqual(model_call['messages'][-1]['content'][0]['type'], 'image_url')
-        self.assertIn(
-            'data:image/png;base64,',
-            model_call['messages'][-1]['content'][0]['image_url']['url'],
-        )
+        screenshot_ref = model_call['messages'][-1]['content'][0]['image_url']['url']
+        self.assertTrue(screenshot_ref.startswith('screenshots/'), screenshot_ref)
+        self.assertTrue((self.log_dir / screenshot_ref).exists())
 
     def test_screenshot_size_resizes_image_before_model_call(self):
         self.responses[:] = [
@@ -470,6 +470,7 @@ class AgentContextTests(unittest.TestCase):
             save_context_log=True,
             context_log_dir=str(self.log_dir),
             screenshot_size=512,
+            log_full_messages=True,
         )
         result = agent.run('Resize screenshot for the model')
 
@@ -490,10 +491,8 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(task_start['screenshot_size'], 512)
         self.assertEqual(model_call['screenshot_size'], [512, 512])
         self.assertEqual(model_call['original_screenshot_size'], [1280, 720])
-        self.assertEqual(
-            (self.screenshot_dir / 'step_1.png').read_text(encoding='utf-8'),
-            '512x512',
-        )
+        screenshot_ref = model_call['messages'][-1]['content'][0]['image_url']['url']
+        self.assertEqual((self.log_dir / screenshot_ref).read_text(encoding='utf-8'), '512x512')
 
     def test_agent_passes_natural_scroll_override_to_executor(self):
         self.responses[:] = [

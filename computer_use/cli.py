@@ -72,13 +72,11 @@ def print_config_info(
     )
     if effective_screenshot_size is not None:
         print(f"  模型截图尺寸: {effective_screenshot_size} x {effective_screenshot_size}")
-    save_screenshot = config.save_screenshot
-    print(f"  保存截图: {'是' if save_screenshot else '否'}")
-    if save_screenshot:
-        print(f"  截图目录: {config.screenshot_dir}")
     print(f"  上下文日志: {'是' if config.save_context_log else '否'}")
     print(f"  日志目录: {config.context_log_dir}")
     print(f"  完整上下文日志: {'是' if log_full_messages else '否'}")
+    if log_full_messages and config.save_context_log:
+        print(f"  调试截图目录: {Path(config.context_log_dir) / 'screenshots'}")
     print()
 
 
@@ -378,24 +376,7 @@ def main():
     parser.add_argument(
         '--verbose',
         action='store_true',
-        help='在上下文日志的 model_call 事件中记录完整 messages'
-    )
-    
-    parser.add_argument(
-        '--screenshot-dir',
-        help='截图保存目录'
-    )
-
-    screenshot_group = parser.add_mutually_exclusive_group()
-    screenshot_group.add_argument(
-        '--save-screenshot',
-        action='store_true',
-        help='启用截图保存'
-    )
-    screenshot_group.add_argument(
-        '--no-screenshot',
-        action='store_true',
-        help='禁用截图保存'
+        help='在上下文日志中记录完整 messages，并将截图保存到 CONTEXT_LOG_DIR/screenshots/'
     )
 
     scroll_group = parser.add_mutually_exclusive_group()
@@ -443,18 +424,6 @@ def main():
     
     # 解析参数
     args = parser.parse_args()
-    
-    # 处理截图配置
-    if args.save_screenshot:
-        import os
-        os.environ['SAVE_SCREENSHOT'] = 'true'
-    elif args.no_screenshot:
-        import os
-        os.environ['SAVE_SCREENSHOT'] = 'false'
-    
-    if args.screenshot_dir:
-        import os
-        os.environ['SCREENSHOT_DIR'] = args.screenshot_dir
     
     # 确定运行模式
     verbose = not args.quiet

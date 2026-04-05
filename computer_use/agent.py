@@ -122,6 +122,7 @@ class ComputerUseAgent:
             save_context_log if save_context_log is not None else config.save_context_log
         )
         self.context_log_dir = context_log_dir or config.context_log_dir
+        self.save_debug_screenshots = self.save_context_log and self.log_full_messages
         self.language = language
         self.verbose = verbose
         self.enable_skills = enable_skills if enable_skills is not None else config.enable_skills
@@ -218,25 +219,25 @@ class ComputerUseAgent:
                     print(f"\n[步骤 {self.current_step}/{self.max_steps}]")
                 
                 # 1. 截图
-                screenshot, screenshot_path = capture_screenshot()
+                screenshot, _ = capture_screenshot()
                 img_width, img_height = screenshot.size
                 model_screenshot = self._prepare_model_screenshot(screenshot)
                 model_img_width, model_img_height = model_screenshot.size
-                self._persist_model_screenshot(
-                    screenshot_path=screenshot_path,
-                    original_screenshot=screenshot,
-                    model_screenshot=model_screenshot,
-                )
+                logged_screenshot_path = self._save_debug_screenshot(model_screenshot)
                 current_screenshot_message = self._build_screenshot_message(
-                    model_screenshot
+                    model_screenshot,
+                    logged_screenshot_path=logged_screenshot_path,
                 )
                 
-                if self.verbose and screenshot_path:
-                    print(f"  截图: {screenshot_path}")
+                if self.verbose and logged_screenshot_path:
+                    print(
+                        f"  调试截图: "
+                        f"{self.context_logger.resolve_path(logged_screenshot_path)}"
+                    )
                 
                 # 2. 调用模型
                 text_input = ''
-                messages, message_summary, retained_screenshot_count = (
+                messages, logged_messages, message_summary, retained_screenshot_count = (
                     self._build_request_messages(
                         instruction=instruction,
                         current_screenshot_message=current_screenshot_message,
@@ -257,12 +258,12 @@ class ComputerUseAgent:
                     'text_input': text_input,
                     'message_summary': message_summary,
                     'retained_screenshot_count': retained_screenshot_count,
-                    'screenshot_path': screenshot_path,
+                    'screenshot_path': logged_screenshot_path,
                     'screenshot_size': [model_img_width, model_img_height],
                     'original_screenshot_size': [img_width, img_height],
                 }
-                if self.log_full_messages:
-                    model_call_payload['messages'] = messages
+                if logged_messages is not None:
+                    model_call_payload['messages'] = logged_messages
 
                 self.context_logger.log_event(
                     'model_call',
@@ -295,7 +296,7 @@ class ComputerUseAgent:
                     step_elapsed_seconds = time.perf_counter() - step_start_time
                     step_record = self._build_step_record(
                         step=self.current_step,
-                        screenshot_path=screenshot_path,
+                        screenshot_path=logged_screenshot_path,
                         model_input=text_input,
                         response=response,
                         action=None,
@@ -342,7 +343,7 @@ class ComputerUseAgent:
                     step_elapsed_seconds = time.perf_counter() - step_start_time
                     step_record = self._build_step_record(
                         step=self.current_step,
-                        screenshot_path=screenshot_path,
+                        screenshot_path=logged_screenshot_path,
                         model_input=text_input,
                         response=response,
                         action=action,
@@ -400,7 +401,7 @@ class ComputerUseAgent:
                     step_elapsed_seconds = time.perf_counter() - step_start_time
                     step_record = self._build_step_record(
                         step=self.current_step,
-                        screenshot_path=screenshot_path,
+                        screenshot_path=logged_screenshot_path,
                         model_input=text_input,
                         response=response,
                         action=action,
@@ -442,7 +443,7 @@ class ComputerUseAgent:
                     step_elapsed_seconds = time.perf_counter() - step_start_time
                     step_record = self._build_step_record(
                         step=self.current_step,
-                        screenshot_path=screenshot_path,
+                        screenshot_path=logged_screenshot_path,
                         model_input=text_input,
                         response=response,
                         action=action,
@@ -480,7 +481,7 @@ class ComputerUseAgent:
                 step_elapsed_seconds = time.perf_counter() - step_start_time
                 step_record = self._build_step_record(
                     step=self.current_step,
-                    screenshot_path=screenshot_path,
+                    screenshot_path=logged_screenshot_path,
                     model_input=text_input,
                     response=response,
                     action=action,
@@ -559,6 +560,8 @@ class ComputerUseAgent:
         print(f"  上下文截图窗口: {self.max_context_screenshots}")
         print(f"  注入执行反馈: {'启用' if self.include_execution_feedback else '禁用'}")
         print(f"  日志完整上下文: {'启用' if self.log_full_messages else '禁用'}")
+        if self.save_debug_screenshots:
+            print(f"  调试截图目录: {self.context_log_dir}/screenshots")
         print(f"  自然滚动: {'启用' if self.natural_scroll else '禁用'}")
         print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
         print(f"  语言: {self.language}")
@@ -661,20 +664,11 @@ class ComputerUseAgent:
             return resampling.LANCZOS
         return PILImage.LANCZOS
 
-    def _persist_model_screenshot(
-        self,
-        screenshot_path: Optional[str],
-        original_screenshot: Any,
-        model_screenshot: Any,
-    ) -> None:
-        """若本地已保存截图，则将缩放后的模型截图同步覆盖到保存路径。"""
-        if screenshot_path is None or self.screenshot_size is None:
-            return
-
-        if getattr(original_screenshot, 'size', None) == getattr(model_screenshot, 'size', None):
-            return
-
-        model_screenshot.save(screenshot_path)
+    def _save_debug_screenshot(self, screenshot: Any) -> Optional[str]:
+        """在完整上下文日志模式下保存当前模型截图。"""
+        if not self.save_debug_screenshots:
+            return None
+        return self.context_logger.save_screenshot(screenshot, step=self.current_step)
 
     def _extract_usage(self, response: Any) -> Optional[Dict[str, Any]]:
         """提取响应中的 token 使用量信息。"""
@@ -749,29 +743,36 @@ class ComputerUseAgent:
             'reasoning': reasoning.strip(),
         }
 
-    def _build_screenshot_message(self, screenshot: Any) -> Dict[str, Any]:
-        """将截图编码成单条 user image_url 消息。"""
+    def _build_screenshot_message(
+        self,
+        screenshot: Any,
+        logged_screenshot_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """构建截图消息，分别服务于模型调用和日志落盘。"""
         img_buffer = io.BytesIO()
         screenshot.save(img_buffer, format='PNG')
         img_buffer.seek(0)
         base64_image = base64.b64encode(img_buffer.read()).decode('utf-8')
         return {
-            'role': 'user',
-            'content': [
-                {
-                    'type': 'image_url',
-                    'image_url': {
-                        'url': f'data:image/png;base64,{base64_image}'
+            'api_message': {
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'image_url',
+                        'image_url': {
+                            'url': f'data:image/png;base64,{base64_image}'
+                        }
                     }
-                }
-            ],
+                ],
+            },
+            'logged_screenshot_path': logged_screenshot_path,
         }
 
     def _build_request_messages(
         self,
         instruction: str,
         current_screenshot_message: Dict[str, Any],
-    ) -> tuple[List[Dict[str, Any]], str, int]:
+    ) -> tuple[List[Dict[str, Any]], Optional[List[Dict[str, Any]]], str, int]:
         """组装发送给模型的 messages。"""
         retained_screenshot_items = list(self.recent_screenshot_messages)
         retained_start = len(self.assistant_history) - len(retained_screenshot_items)
@@ -783,27 +784,61 @@ class ComputerUseAgent:
                 'content': self._build_system_prompt(instruction),
             }
         ]
+        logged_messages: Optional[List[Dict[str, Any]]] = None
+        if self.log_full_messages:
+            logged_messages = [dict(messages[0])]
 
         if retained_start > 0:
             messages.extend(self.assistant_history[:retained_start])
+            if logged_messages is not None:
+                logged_messages.extend(self.assistant_history[:retained_start])
 
         for offset, screenshot_message in enumerate(retained_screenshot_items):
             turn_index = retained_start + offset
-            messages.append(screenshot_message)
+            messages.append(screenshot_message['api_message'])
             messages.append(self.assistant_history[turn_index])
+            if logged_messages is not None:
+                logged_messages.append(
+                    self._build_logged_screenshot_message(screenshot_message)
+                )
+                logged_messages.append(self.assistant_history[turn_index])
             feedback_message = self.execution_feedback_history[turn_index]
             if self.include_execution_feedback and feedback_message is not None:
                 messages.append(feedback_message)
+                if logged_messages is not None:
+                    logged_messages.append(feedback_message)
                 retained_feedback_count += 1
 
-        messages.append(current_screenshot_message)
+        messages.append(current_screenshot_message['api_message'])
+        if logged_messages is not None:
+            logged_messages.append(
+                self._build_logged_screenshot_message(current_screenshot_message)
+            )
 
         retained_screenshot_count = len(retained_screenshot_items) + 1
         message_summary = (
             f'1 system + {len(self.assistant_history)} historical assistant + '
             f'{retained_feedback_count} feedback + {retained_screenshot_count} screenshots'
         )
-        return messages, message_summary, retained_screenshot_count
+        return messages, logged_messages, message_summary, retained_screenshot_count
+
+    def _build_logged_screenshot_message(
+        self,
+        screenshot_message: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """将截图消息转换为日志友好的相对路径引用。"""
+        relative_path = screenshot_message.get('logged_screenshot_path') or ''
+        return {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': relative_path,
+                    }
+                }
+            ],
+        }
 
     def _format_parse_failure_reason(self, error: Exception, response: str) -> str:
         """将解析失败原因整理成简洁单行文本。"""

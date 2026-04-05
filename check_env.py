@@ -83,7 +83,7 @@ def check_config():
         
         print(f"  ✓ 模型: {config.model}")
         print(f"  ✓ API地址: {config.base_url}")
-        print(f"  ✓ 截图保存: {'是' if config.save_screenshot else '否'}")
+        print(f"  ✓ 上下文日志目录: {config.context_log_dir}")
         
         return True
     except Exception as e:

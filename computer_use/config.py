@@ -78,8 +78,6 @@ class Config:
     DEFAULTS = {
         'ARK_MODEL': 'doubao-seed-1-6-vision-250815',
         'ARK_BASE_URL': 'http://ark.cn-beijing.volces.com/api/v3',
-        'SCREENSHOT_DIR': './screenshots',
-        'SAVE_SCREENSHOT': 'false',
         'NATURAL_SCROLL': '',
         'CONTEXT_LOG_DIR': './logs',
         'SAVE_CONTEXT_LOG': 'true',
@@ -235,16 +233,6 @@ class Config:
     def max_steps(self) -> int:
         """最大执行步数"""
         return self.get_int('MAX_STEPS', 20)
-    
-    @property
-    def save_screenshot(self) -> bool:
-        """是否保存截图"""
-        return self.get_bool('SAVE_SCREENSHOT', False)
-    
-    @property
-    def screenshot_dir(self) -> str:
-        """截图保存目录"""
-        return self._config.get('SCREENSHOT_DIR', self.DEFAULTS['SCREENSHOT_DIR'])
 
     @property
     def natural_scroll(self) -> bool:

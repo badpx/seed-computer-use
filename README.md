@@ -109,8 +109,6 @@ python -m computer_use "打开浏览器"
 | 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中最多保留的截图数量，包含当前轮 |
 | 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将历史执行结果和失败原因注入多轮上下文 |
 | 最大步数 | `MAX_STEPS` | `20` | 最大执行步数 |
-| 保存截图 | `SAVE_SCREENSHOT` | `false` | 是否保存截图 |
-| 截图目录 | `SCREENSHOT_DIR` | `./screenshots` | 截图保存目录 |
 | 自然滚动 | `NATURAL_SCROLL` | 自动检测 | 是否按系统自然滚动方向解释 scroll 偏移 |
 | 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
 | 日志目录 | `CONTEXT_LOG_DIR` | `./logs` | 上下文日志保存目录 |
@@ -133,10 +131,6 @@ SCREENSHOT_SIZE=
 MAX_CONTEXT_SCREENSHOTS=5
 INCLUDE_EXECUTION_FEEDBACK=false
 MAX_STEPS=20
-
-# 截图配置
-SAVE_SCREENSHOT=false
-SCREENSHOT_DIR=./screenshots
 
 # 滚动方向；留空时自动检测系统设置
 NATURAL_SCROLL=
@@ -161,7 +155,7 @@ CONTEXT_LOG_DIR=./logs
 - 图片消息只保留最近 `MAX_CONTEXT_SCREENSHOTS` 张，包含当前截图
 - 执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启
 
-历史截图优先保存在限长内存队列中，不依赖本地截图文件回放；截图保存默认关闭，如果通过配置或 CLI 显式启用，本地会额外保留截图路径、尺寸以及每轮模型上下文，方便调试。
+历史截图优先保存在限长内存队列中，不依赖本地截图文件回放。传 `--verbose` 时，工具会把传给模型的截图保存到 `CONTEXT_LOG_DIR/screenshots/`，并在 JSONL 日志中以相对路径引用这些图片，而不是内联 base64 数据，方便调试和回放。
 
 如果设置了 `SCREENSHOT_SIZE` 或 `--screenshot-size`，工具会先把屏幕截图强制缩放为 `NxN` 再传给模型。目前仅支持宽高相同的正方形尺寸。启用后，`pixel` 坐标会按“模型图尺寸 -> 真实屏幕尺寸”自动换算，避免点击偏移。
 
@@ -196,10 +190,7 @@ python -m computer_use [指令] [选项]
 | `--max-context-screenshots <count>` | - | 设置多轮上下文中保留的截图数量，包含当前轮 |
 | `--include-execution-feedback` | - | 启用执行反馈注入 |
 | `--no-execution-feedback` | - | 禁用执行反馈注入 |
-| `--verbose` | - | 在上下文日志的 `model_call` 事件中记录完整 `messages` |
-| `--save-screenshot` | - | 启用截图保存 |
-| `--no-screenshot` | - | 禁用截图保存 |
-| `--screenshot-dir` | - | 指定截图保存目录 |
+| `--verbose` | - | 在上下文日志中记录完整 `messages`，并将截图保存到 `CONTEXT_LOG_DIR/screenshots/` |
 | `--natural-scroll` | - | 显式启用自然滚动 |
 | `--traditional-scroll` | - | 显式启用传统滚动 |
 | `--quiet` | `-q` | 安静模式，减少输出 |
@@ -247,9 +238,6 @@ python -m computer_use "点击按钮" --coordinate-space relative --coordinate-s
 
 # 原生像素坐标输出
 python -m computer_use "点击按钮" --coordinate-space pixel
-
-# 启用截图保存
-python -m computer_use "打开计算器" --save-screenshot
 
 # 强制使用传统滚动
 python -m computer_use "浏览网页" --traditional-scroll

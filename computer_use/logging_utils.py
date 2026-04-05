@@ -15,6 +15,7 @@ class ContextLogger:
     def __init__(self, enabled: bool = True, log_dir: str = './logs'):
         self.enabled = enabled
         self.log_dir = Path(log_dir)
+        self.screenshot_dir = self.log_dir / 'screenshots'
         self.task_id: Optional[str] = None
         self.log_path: Optional[Path] = None
 
@@ -61,6 +62,27 @@ class ContextLogger:
         )
 
         return self.task_id
+
+    def save_screenshot(self, screenshot: Any, step: int) -> Optional[str]:
+        """保存调试截图并返回相对于日志目录的路径。"""
+        if not self.enabled or self.task_id is None:
+            return None
+
+        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        filename = f'{self.task_id}_step_{step:03d}.png'
+        screenshot_path = self.screenshot_dir / filename
+        screenshot.save(screenshot_path)
+        return self.to_relative_path(screenshot_path)
+
+    def to_relative_path(self, path: Path) -> str:
+        """将日志产物路径转换为相对日志目录的稳定引用。"""
+        return path.relative_to(self.log_dir).as_posix()
+
+    def resolve_path(self, relative_path: Optional[str]) -> Optional[str]:
+        """将相对日志路径转换为实际文件路径。"""
+        if relative_path is None:
+            return None
+        return str(self.log_dir / relative_path)
 
     def log_event(self, event: str, **payload: Any) -> None:
         """写入一条 JSONL 记录。"""
