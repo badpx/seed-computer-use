@@ -94,6 +94,8 @@ def interactive_mode(
     include_execution_feedback: Optional[bool] = None,
     log_full_messages: bool = False,
     natural_scroll: Optional[bool] = None,
+    skills_dir: Optional[str] = None,
+    enable_skills: Optional[bool] = None,
     verbose: bool = True
 ):
     """
@@ -145,6 +147,8 @@ def interactive_mode(
             include_execution_feedback=include_execution_feedback,
             log_full_messages=log_full_messages,
             natural_scroll=natural_scroll,
+            skills_dir=skills_dir,
+            enable_skills=enable_skills,
             verbose=verbose
         )
     except Exception as e:
@@ -206,6 +210,8 @@ def single_task_mode(
     include_execution_feedback: Optional[bool] = None,
     log_full_messages: bool = False,
     natural_scroll: Optional[bool] = None,
+    skills_dir: Optional[str] = None,
+    enable_skills: Optional[bool] = None,
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
@@ -254,9 +260,11 @@ def single_task_mode(
         include_execution_feedback=include_execution_feedback,
         log_full_messages=log_full_messages,
         natural_scroll=natural_scroll,
+        skills_dir=skills_dir,
+        enable_skills=enable_skills,
         verbose=verbose
     )
-    
+
     # 执行任务
     result = agent.run(instruction)
     
@@ -401,7 +409,24 @@ def main():
         action='store_true',
         help='启用传统滚动方向'
     )
-    
+
+    parser.add_argument(
+        '--skills-dir',
+        help='技能目录路径（默认从配置读取）'
+    )
+
+    skills_group = parser.add_mutually_exclusive_group()
+    skills_group.add_argument(
+        '--enable-skills',
+        action='store_true',
+        help='启用技能系统'
+    )
+    skills_group.add_argument(
+        '--no-skills',
+        action='store_true',
+        help='禁用技能系统'
+    )
+
     parser.add_argument(
         '--quiet',
         '-q',
@@ -463,7 +488,14 @@ def main():
         include_execution_feedback = True
     elif args.no_execution_feedback:
         include_execution_feedback = False
-    
+
+    skills_dir = args.skills_dir or None
+    enable_skills: Optional[bool] = None
+    if args.enable_skills:
+        enable_skills = True
+    elif args.no_skills:
+        enable_skills = False
+
     try:
         if args.instruction:
             # 单次任务模式
@@ -480,6 +512,8 @@ def main():
                 include_execution_feedback=include_execution_feedback,
                 log_full_messages=log_full_messages,
                 natural_scroll=natural_scroll,
+                skills_dir=skills_dir,
+                enable_skills=enable_skills,
                 verbose=verbose
             )
             
@@ -499,6 +533,8 @@ def main():
                 include_execution_feedback=include_execution_feedback,
                 log_full_messages=log_full_messages,
                 natural_scroll=natural_scroll,
+                skills_dir=skills_dir,
+                enable_skills=enable_skills,
                 verbose=verbose
             )
     

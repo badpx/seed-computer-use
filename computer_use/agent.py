@@ -16,7 +16,8 @@ from .screenshot import capture_screenshot
 from .action_parser import parse_action
 from .action_executor import ActionExecutor
 from .logging_utils import ContextLogger
-from .prompts import COMPUTER_USE_DOUBAO
+from .prompts import COMPUTER_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
+from .skills import Skill, discover_skills, skills_to_tools, load_skill
 
 
 class ComputerUseAgent:
@@ -44,7 +45,9 @@ class ComputerUseAgent:
         save_context_log: Optional[bool] = None,
         context_log_dir: Optional[str] = None,
         language: str = 'Chinese',
-        verbose: bool = True
+        verbose: bool = True,
+        skills_dir: Optional[str] = None,
+        enable_skills: Optional[bool] = None,
     ):
         """
         初始化代理
@@ -121,6 +124,10 @@ class ComputerUseAgent:
         self.context_log_dir = context_log_dir or config.context_log_dir
         self.language = language
         self.verbose = verbose
+        self.enable_skills = enable_skills if enable_skills is not None else config.enable_skills
+        self.skills_dir = skills_dir or config.skills_dir
+        self.skills: List[Skill] = discover_skills(self.skills_dir) if self.enable_skills else []
+        self.skill_tools: List[dict] = skills_to_tools(self.skills) if self.skills else []
 
         config.validate()
 
@@ -555,39 +562,82 @@ class ComputerUseAgent:
         print(f"  自然滚动: {'启用' if self.natural_scroll else '禁用'}")
         print(f"  上下文日志: {'启用' if self.save_context_log else '禁用'}")
         print(f"  语言: {self.language}")
-    
+        if self.enable_skills:
+            print(f"  技能: {len(self.skills)} 个已加载")
+        else:
+            print(f"  技能: 禁用")
+
     def _call_model(
         self,
         messages: List[Dict[str, Any]],
     ) -> tuple[Any, str]:
         """
-        调用模型进行推理
-        
+        调用模型进行推理，支持 Skill 工具调用的渐进式加载。
+
+        若模型请求加载 Skill（finish_reason == 'tool_calls'），
+        则注入 Skill 内容后重新调用，直到模型输出最终文本响应。
+
         Args:
-            messages: 完整请求消息
-            
+            messages: 完整请求消息（会在 skill 加载子循环中被原地修改）
+
         Returns:
             tuple[Any, str]: (完整响应对象, 模型响应文本)
         """
-        # 调用模型
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            thinking={
-                'type': self.thinking_mode,
-            },
-            reasoning_effort=self.reasoning_effort,
-        )
-        
-        return response, response.choices[0].message.content
+        max_skill_rounds = 5  # 防止无限循环的安全上限
+        response = None
+        choice = None
+
+        for _ in range(max_skill_rounds):
+            kwargs: Dict[str, Any] = dict(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                thinking={'type': self.thinking_mode},
+                reasoning_effort=self.reasoning_effort,
+            )
+            if self.skill_tools:
+                kwargs['tools'] = self.skill_tools
+
+            response = self.client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+
+            if getattr(choice, 'finish_reason', None) != 'tool_calls':
+                # 正常文本响应，直接返回
+                return response, choice.message.content
+
+            # 模型请求加载 Skill：注入内容后重新调用
+            # TODO: Level 3 — 区分 skill__ 前缀（加载指南）与 resource__/script__ 前缀
+            #   （按需加载附加资源文件或执行脚本并注入输出），以支持完整的三层渐进式披露。
+            messages.append(choice.message.model_dump())
+            tool_calls = choice.message.tool_calls or []
+            for tc in tool_calls:
+                skill_content = load_skill(self.skills, tc.function.name)
+                messages.append({
+                    'role': 'tool',
+                    'content': skill_content,
+                    'tool_call_id': tc.id,
+                })
+            if self.verbose:
+                names = [tc.function.name for tc in tool_calls]
+                print(f"  加载技能: {', '.join(names)}")
+            self.context_logger.log_event(
+                'skill_loaded',
+                step=self.current_step,
+                skills=[tc.function.name for tc in tool_calls],
+            )
+
+        # 超出 skill 加载轮数上限，返回最后一次响应
+        return response, (choice.message.content or '') if choice else ''
 
     def _build_system_prompt(self, instruction: str) -> str:
-        """构建单次请求共用的 system prompt。"""
-        return COMPUTER_USE_DOUBAO.format(
+        """构建单次请求共用的 system prompt。若技能系统启用则追加技能说明。"""
+        prompt = COMPUTER_USE_DOUBAO.format(
             instruction=instruction,
             language=self.language,
         )
+        if self.skills:
+            prompt += SKILLS_PROMPT_ADDENDUM
+        return prompt
 
     def _prepare_model_screenshot(self, screenshot: Any) -> Any:
         """按配置缩放传给模型的截图。"""

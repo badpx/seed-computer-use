@@ -36,25 +36,36 @@ def __getattr__(name):
             'execute_action': execute_action,
             'ActionExecutor': ActionExecutor,
         }[name]
+    if name in {'Skill', 'discover_skills'}:
+        from .skills import Skill, discover_skills
+
+        return {
+            'Skill': Skill,
+            'discover_skills': discover_skills,
+        }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # 配置
     'config',
     'Config',
-    
+
     # 核心类
     'ComputerUseAgent',
-    
+
     # 截图
     'capture_screenshot',
     'screenshot_manager',
-    
+
     # 动作解析
     'parse_action',
     'ActionParser',
-    
+
     # 动作执行
     'execute_action',
     'ActionExecutor',
+
+    # 技能系统
+    'Skill',
+    'discover_skills',
 ]

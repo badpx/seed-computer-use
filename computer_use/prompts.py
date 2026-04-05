@@ -38,6 +38,15 @@ finished(content='xxx') # Use escape characters \\', \\", and \\n in content par
 {instruction}
 '''
 
+# 技能提示词附加内容，在技能系统启用时追加到系统提示词末尾
+SKILLS_PROMPT_ADDENDUM = '''
+
+## Skills
+You have access to skill tools that provide specialized instructions for complex tasks.
+When you encounter a task that matches an available skill, call the corresponding skill tool to load detailed instructions before proceeding with Thought/Action.
+After loading a skill, follow its instructions using the Action Space defined above.
+'''
+
 
 # 手机 GUI 任务场景的提示词模板（可选）
 PHONE_USE_DOUBAO = '''

@@ -26,13 +26,36 @@ class FakeScreenshot:
         Path(target).write_bytes(payload)
 
 
+class FakeToolCall:
+    """Simulates a single tool call in a model response."""
+    def __init__(self, name, tool_call_id='tc-1'):
+        self.id = tool_call_id
+        self.function = types.SimpleNamespace(name=name, arguments='{}')
+
+
 class FakeResponse:
-    def __init__(self, content, usage=None, reasoning_content=None):
+    def __init__(self, content, usage=None, reasoning_content=None,
+                 finish_reason='stop', tool_calls=None):
+        serialised_tool_calls = None
+        if tool_calls:
+            serialised_tool_calls = [
+                {'id': tc.id, 'function': {'name': tc.function.name, 'arguments': '{}'}}
+                for tc in tool_calls
+            ]
         message = types.SimpleNamespace(
             content=content,
             reasoning_content=reasoning_content,
+            tool_calls=tool_calls,
         )
-        self.choices = [types.SimpleNamespace(message=message)]
+        message.model_dump = lambda: {
+            'role': 'assistant',
+            'content': content,
+            'tool_calls': serialised_tool_calls,
+        }
+        self.choices = [types.SimpleNamespace(
+            message=message,
+            finish_reason=finish_reason,
+        )]
         self.usage = usage
 
 
@@ -48,9 +71,11 @@ class FakeCompletionAPI:
         item = self._responses.pop(0)
         if isinstance(item, dict):
             return FakeResponse(
-                item['content'],
+                item.get('content', ''),
                 usage=item.get('usage'),
                 reasoning_content=item.get('reasoning_content'),
+                finish_reason=item.get('finish_reason', 'stop'),
+                tool_calls=item.get('tool_calls'),
             )
         return FakeResponse(item)
 
@@ -520,6 +545,102 @@ class AgentContextTests(unittest.TestCase):
                 thinking_mode='disabled',
                 reasoning_effort='high',
             )
+
+    def test_tools_passed_to_api_when_skills_are_enabled(self):
+        """When skills are loaded, the 'tools' kwarg is included in every API call."""
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        with tempfile.TemporaryDirectory() as skills_dir:
+            skill_path = Path(skills_dir) / 'my-skill'
+            skill_path.mkdir()
+            (skill_path / 'SKILL.md').write_text(
+                '---\nname: my-skill\ndescription: A test skill\n---\n\n## Instructions\nDo something.',
+                encoding='utf-8',
+            )
+
+            agent = self._make_agent(skills_dir=skills_dir, enable_skills=True)
+            agent.run('Use skills')
+
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn('tools', self.calls[0])
+        tool_names = [t['function']['name'] for t in self.calls[0]['tools']]
+        self.assertIn('skill__my-skill', tool_names)
+
+    def test_no_tools_kwarg_when_skills_are_disabled(self):
+        """When skills are disabled, no 'tools' kwarg is sent to the API."""
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(enable_skills=False)
+        agent.run('No skills here')
+
+        self.assertEqual(len(self.calls), 1)
+        self.assertNotIn('tools', self.calls[0])
+
+    def test_skill_tool_call_loads_instructions_and_retries(self):
+        """When the model returns finish_reason='tool_calls', skill content is
+        injected as a tool result and the model is called again."""
+        with tempfile.TemporaryDirectory() as skills_dir:
+            skill_path = Path(skills_dir) / 'open-browser'
+            skill_path.mkdir()
+            (skill_path / 'SKILL.md').write_text(
+                '---\nname: open-browser\ndescription: Open a browser\n---\n\nUse hotkey ctrl+n.',
+                encoding='utf-8',
+            )
+
+            self.responses[:] = [
+                {
+                    'content': '',
+                    'finish_reason': 'tool_calls',
+                    'tool_calls': [FakeToolCall('skill__open-browser', 'tc-42')],
+                },
+                "Thought: open browser\nAction: finished(content='done')",
+            ]
+
+            agent = self._make_agent(skills_dir=skills_dir, enable_skills=True)
+            result = agent.run('Open a browser')
+
+        self.assertTrue(result['success'])
+        # Two API calls: one skill-load round + one final answer
+        self.assertEqual(len(self.calls), 2)
+        second_call_messages = self.calls[1]['messages']
+        roles = [m['role'] for m in second_call_messages]
+        self.assertIn('tool', roles)
+        tool_msg = next(m for m in second_call_messages if m['role'] == 'tool')
+        self.assertIn('hotkey ctrl+n', tool_msg['content'])
+        self.assertEqual(tool_msg['tool_call_id'], 'tc-42')
+
+    def test_max_skill_rounds_prevents_infinite_loop(self):
+        """If the model keeps requesting skills, the loop stops after max_skill_rounds."""
+        with tempfile.TemporaryDirectory() as skills_dir:
+            skill_path = Path(skills_dir) / 'loop-skill'
+            skill_path.mkdir()
+            (skill_path / 'SKILL.md').write_text(
+                '---\nname: loop-skill\ndescription: Looping skill\n---\n\nInstructions.',
+                encoding='utf-8',
+            )
+
+            # 6 tool_call responses — one more than max_skill_rounds (5)
+            self.responses[:] = [
+                {
+                    'content': '',
+                    'finish_reason': 'tool_calls',
+                    'tool_calls': [FakeToolCall('skill__loop-skill', f'tc-{i}')],
+                }
+                for i in range(6)
+            ]
+
+            agent = self._make_agent(
+                skills_dir=skills_dir,
+                enable_skills=True,
+                max_steps=1,
+            )
+            # Should not raise; the skill loop cap prevents consuming all 6 responses
+            agent.run('Trigger skill loop')
+
+        # max_skill_rounds=5: only 5 of the 6 responses are consumed within one step.
+        # The 6th must remain unconsumed.
+        remaining = len(self.responses)
+        self.assertEqual(remaining, 1, f'Expected 1 response left after capping, got {remaining}')
 
 
 if __name__ == '__main__':

@@ -94,6 +94,8 @@ class Config:
         'INCLUDE_EXECUTION_FEEDBACK': 'false',
         'MAX_PIXELS': '12845056',  # 16384 * 28 * 28
         'MIN_PIXELS': '78400',     # 100 * 28 * 28
+        'SKILLS_DIR': './skills',
+        'ENABLE_SKILLS': 'true',
     }
     
     # 必需配置项
@@ -314,6 +316,14 @@ class Config:
             self._config.get('REASONING_EFFORT'),
             default=self.DEFAULTS['REASONING_EFFORT'],
         )
+
+    @property
+    def skills_dir(self) -> str:
+        return self._config.get('SKILLS_DIR', self.DEFAULTS['SKILLS_DIR'])
+
+    @property
+    def enable_skills(self) -> bool:
+        return self.get_bool('ENABLE_SKILLS', True)
 
     def _detect_natural_scroll(self) -> bool:
         """自动检测系统滚动方向设置。"""
