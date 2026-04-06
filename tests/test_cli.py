@@ -11,9 +11,12 @@ from unittest import mock
 
 
 class FakePromptSession:
-    def __init__(self, history=None, responses=None):
+    def __init__(self, history=None, responses=None, multiline=False, key_bindings=None, **kwargs):
         self.history = history
         self.responses = list(responses or [])
+        self.multiline = multiline
+        self.key_bindings = key_bindings
+        self.init_kwargs = kwargs
         self.prompts = []
 
     def prompt(self, text, **kwargs):
@@ -45,6 +48,7 @@ class CliPromptTests(unittest.TestCase):
     def test_create_prompt_session_uses_file_history_when_prompt_toolkit_is_available(self):
         fake_prompt_toolkit = types.ModuleType('prompt_toolkit')
         fake_history_module = types.ModuleType('prompt_toolkit.history')
+        fake_key_binding_module = types.ModuleType('prompt_toolkit.key_binding')
         history_calls = []
 
         class FakeFileHistory:
@@ -52,10 +56,25 @@ class CliPromptTests(unittest.TestCase):
                 history_calls.append(filename)
                 self.filename = filename
 
+        class FakeKeyBindings:
+            def __init__(self):
+                self.handlers = {}
+
+            def add(self, *keys, **kwargs):
+                del kwargs
+
+                def decorator(func):
+                    self.handlers[keys] = func
+                    return func
+
+                return decorator
+
         fake_prompt_toolkit.PromptSession = FakePromptSession
         fake_history_module.FileHistory = FakeFileHistory
+        fake_key_binding_module.KeyBindings = FakeKeyBindings
         sys.modules['prompt_toolkit'] = fake_prompt_toolkit
         sys.modules['prompt_toolkit.history'] = fake_history_module
+        sys.modules['prompt_toolkit.key_binding'] = fake_key_binding_module
 
         with tempfile.TemporaryDirectory() as temp_dir:
             history_path = Path(temp_dir) / 'history.txt'
@@ -64,6 +83,50 @@ class CliPromptTests(unittest.TestCase):
         self.assertIsInstance(session, FakePromptSession)
         self.assertEqual(history_calls, [str(history_path)])
         self.assertEqual(session.history.filename, str(history_path))
+        self.assertTrue(session.multiline)
+        self.assertIsNotNone(session.key_bindings)
+        self.assertIn(('enter',), session.key_bindings.handlers)
+        self.assertIn(('c-j',), session.key_bindings.handlers)
+        self.assertIn(('c-p',), session.key_bindings.handlers)
+        self.assertIn(('c-n',), session.key_bindings.handlers)
+
+    def test_create_prompt_key_bindings_supports_multiline_navigation_and_submit(self):
+        fake_key_binding_module = types.ModuleType('prompt_toolkit.key_binding')
+
+        class FakeKeyBindings:
+            def __init__(self):
+                self.handlers = {}
+
+            def add(self, *keys, **kwargs):
+                del kwargs
+
+                def decorator(func):
+                    self.handlers[keys] = func
+                    return func
+
+                return decorator
+
+        fake_key_binding_module.KeyBindings = FakeKeyBindings
+        sys.modules['prompt_toolkit.key_binding'] = fake_key_binding_module
+
+        key_bindings = self.cli._create_prompt_key_bindings()
+
+        buffer = types.SimpleNamespace(
+            validate_and_handle=mock.Mock(),
+            insert_text=mock.Mock(),
+            auto_up=mock.Mock(),
+            auto_down=mock.Mock(),
+        )
+        event = types.SimpleNamespace(current_buffer=buffer, arg=3)
+
+        key_bindings.handlers[('enter',)](event)
+        key_bindings.handlers[('c-j',)](event)
+        key_bindings.handlers[('c-p',)](event)
+        key_bindings.handlers[('c-n',)](event)
+        buffer.validate_and_handle.assert_called_once_with()
+        self.assertEqual(buffer.insert_text.call_args_list, [mock.call('\n')])
+        buffer.auto_up.assert_called_once_with(count=3)
+        buffer.auto_down.assert_called_once_with(count=3)
 
     def test_create_prompt_session_returns_none_when_prompt_toolkit_is_unavailable(self):
         original_import_module = self.cli.importlib.import_module

@@ -371,6 +371,34 @@ def _resolve_history_file(history_file: Optional[Path] = None) -> Path:
     return DEFAULT_HISTORY_FILE
 
 
+def _create_prompt_key_bindings():
+    """为交互输入创建多行编辑按键绑定。"""
+    try:
+        prompt_toolkit_key_binding = importlib.import_module('prompt_toolkit.key_binding')
+    except ImportError:
+        return None
+
+    key_bindings = prompt_toolkit_key_binding.KeyBindings()
+
+    @key_bindings.add('enter', eager=True)
+    def _submit_input(event):
+        event.current_buffer.validate_and_handle()
+
+    @key_bindings.add('c-j', eager=True)
+    def _insert_newline_ctrl_j(event):
+        event.current_buffer.insert_text('\n')
+
+    @key_bindings.add('c-p', eager=True)
+    def _auto_up_or_history_previous(event):
+        event.current_buffer.auto_up(count=event.arg)
+
+    @key_bindings.add('c-n', eager=True)
+    def _auto_down_or_history_next(event):
+        event.current_buffer.auto_down(count=event.arg)
+
+    return key_bindings
+
+
 def _create_prompt_session(history_file: Optional[Path] = None):
     """优先使用 prompt_toolkit 创建带文件历史的输入会话。"""
     try:
@@ -380,12 +408,20 @@ def _create_prompt_session(history_file: Optional[Path] = None):
         return None
 
     history_path = _resolve_history_file(history_file)
+    key_bindings = _create_prompt_key_bindings()
     try:
         history_path.parent.mkdir(parents=True, exist_ok=True)
         history = prompt_toolkit_history.FileHistory(str(history_path))
-        return prompt_toolkit.PromptSession(history=history)
+        return prompt_toolkit.PromptSession(
+            history=history,
+            multiline=True,
+            key_bindings=key_bindings,
+        )
     except OSError:
-        return prompt_toolkit.PromptSession()
+        return prompt_toolkit.PromptSession(
+            multiline=True,
+            key_bindings=key_bindings,
+        )
 
 
 def _read_instruction(
