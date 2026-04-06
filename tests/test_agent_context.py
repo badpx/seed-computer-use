@@ -417,6 +417,35 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('上下文截图窗口: 3', rendered)
         self.assertIn('注入执行反馈: 启用', rendered)
 
+    def test_system_prompt_includes_runtime_timezone_date_and_weekday(self):
+        agent = self._make_agent(verbose=False)
+        agent._get_runtime_context = lambda: {
+            'timezone': 'Asia/Shanghai (CST), UTC+08:00',
+            'date': '2026-04-06',
+            'weekday': 'Monday',
+        }
+
+        prompt = agent._build_system_prompt()
+
+        self.assertIn('## Runtime Context', prompt)
+        self.assertIn('- Local timezone: Asia/Shanghai (CST), UTC+08:00', prompt)
+        self.assertIn('- Local date: 2026-04-06', prompt)
+        self.assertIn('- Local weekday: Monday', prompt)
+        self.assertNotIn('Approximate location', prompt)
+
+    def test_system_prompt_includes_approximate_location_when_available(self):
+        agent = self._make_agent(verbose=False)
+        agent._get_runtime_context = lambda: {
+            'timezone': 'Asia/Shanghai (CST), UTC+08:00',
+            'date': '2026-04-06',
+            'weekday': 'Monday',
+            'location': 'Shanghai',
+        }
+
+        prompt = agent._build_system_prompt()
+
+        self.assertIn('- Approximate location: Shanghai', prompt)
+
     def test_init_output_can_be_suppressed(self):
         output = io.StringIO()
 

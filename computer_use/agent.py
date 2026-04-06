@@ -5,8 +5,10 @@
 
 import json
 import io
+import os
 import time
 import base64
+from datetime import datetime
 from typing import Callable, Dict, Any, List, Optional, Set, Tuple
 
 from volcenginesdkarkruntime import Ark
@@ -1122,9 +1124,79 @@ class ComputerUseAgent:
         prompt = COMPUTER_USE_DOUBAO.format(
             language=self.language,
         )
+        prompt += self._build_runtime_context_prompt()
         if self.skills:
             prompt += SKILLS_PROMPT_ADDENDUM
         return prompt
+
+    def _build_runtime_context_prompt(self) -> str:
+        """构建注入到 system prompt 的当前运行时上下文。"""
+        runtime_context = self._get_runtime_context()
+        lines = [
+            '',
+            '## Runtime Context',
+            f"- Local timezone: {runtime_context['timezone']}",
+            f"- Local date: {runtime_context['date']}",
+            f"- Local weekday: {runtime_context['weekday']}",
+        ]
+        location = runtime_context.get('location')
+        if location:
+            lines.append(f'- Approximate location: {location}')
+        return '\n'.join(lines)
+
+    def _get_runtime_context(self) -> Dict[str, str]:
+        """获取当前可注入提示词的本地时间与位置上下文。"""
+        current_local_time = datetime.now().astimezone()
+        timezone_name = self._get_local_timezone_name(current_local_time)
+        timezone_offset = self._format_timezone_offset(current_local_time.strftime('%z'))
+        timezone_display = timezone_name
+        timezone_abbreviation = current_local_time.tzname()
+        if timezone_abbreviation and timezone_abbreviation not in timezone_display:
+            timezone_display = f'{timezone_display} ({timezone_abbreviation})'
+        if timezone_offset:
+            timezone_display = f'{timezone_display}, {timezone_offset}'
+
+        runtime_context = {
+            'timezone': timezone_display,
+            'date': current_local_time.strftime('%Y-%m-%d'),
+            'weekday': current_local_time.strftime('%A'),
+        }
+        location = self._get_approximate_location()
+        if location:
+            runtime_context['location'] = location
+        return runtime_context
+
+    def _get_local_timezone_name(self, current_local_time: datetime) -> str:
+        """尽量解析稳定的 IANA 时区名，否则退回缩写。"""
+        tz_env = os.getenv('TZ')
+        if tz_env:
+            return tz_env
+
+        localtime_path = '/etc/localtime'
+        try:
+            if os.path.exists(localtime_path):
+                resolved_path = os.path.realpath(localtime_path)
+                marker = '/zoneinfo/'
+                if marker in resolved_path:
+                    return resolved_path.split(marker, 1)[1]
+        except OSError:
+            pass
+
+        tzinfo = current_local_time.tzinfo
+        timezone_key = getattr(tzinfo, 'key', None)
+        if timezone_key:
+            return timezone_key
+        return current_local_time.tzname() or 'Local'
+
+    def _format_timezone_offset(self, raw_offset: str) -> str:
+        """将 +0800 格式化为 UTC+08:00。"""
+        if not raw_offset or len(raw_offset) != 5:
+            return ''
+        return f'UTC{raw_offset[:3]}:{raw_offset[3:]}'
+
+    def _get_approximate_location(self) -> Optional[str]:
+        """返回可用的城镇级大致位置；当前默认不可用。"""
+        return None
 
     def _prepare_model_screenshot(self, screenshot: Any) -> Any:
         """按配置缩放传给模型的截图。"""
