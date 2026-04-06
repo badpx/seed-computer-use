@@ -252,6 +252,19 @@ def _handle_clear_command(context: InteractiveCommandContext, args_text: str) ->
     print()
 
 
+def _handle_compact_command(context: InteractiveCommandContext, args_text: str) -> None:
+    """压缩当前交互会话的多轮上下文历史。"""
+    del args_text
+    print()
+    print('[处理中] 正在压缩多轮对话上下文历史...')
+    changed = context.agent.compact_session_context(manual=True)
+    if changed:
+        print('[已压缩] 多轮对话上下文历史已精炼')
+    else:
+        print('[无需压缩] 当前会话历史没有可压缩内容')
+    print()
+
+
 def _handle_exit_command(context: InteractiveCommandContext, args_text: str) -> None:
     """退出交互模式。"""
     del args_text
@@ -266,6 +279,11 @@ def _build_interactive_commands() -> Dict[str, InteractiveCommand]:
             name='/clear',
             handler=_handle_clear_command,
             summary='清理多轮对话上下文',
+        ),
+        '/compact': InteractiveCommand(
+            name='/compact',
+            handler=_handle_compact_command,
+            summary='压缩多轮对话上下文',
         ),
         '/exit': InteractiveCommand(
             name='/exit',

@@ -88,6 +88,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -107,6 +108,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -146,6 +151,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -165,6 +171,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -187,6 +197,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'enabled'
                 self.reasoning_effort = 'high'
@@ -212,6 +223,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -242,6 +257,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -257,6 +273,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -283,6 +303,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -298,6 +319,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -324,6 +349,7 @@ class CliPromptTests(unittest.TestCase):
             def __init__(self, **kwargs):
                 self.kwargs = kwargs
                 self.clear_calls = 0
+                self.compact_calls = 0
                 fake_agent_instances.append(self)
 
             def run(self, instruction):
@@ -338,6 +364,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -384,6 +414,9 @@ class CliPromptTests(unittest.TestCase):
             def clear_session_context(self):
                 pass
 
+            def compact_session_context(self, manual=False):
+                return True
+
         fake_agent_module.ComputerUseAgent = FakeAgent
         sys.modules['computer_use.agent'] = fake_agent_module
 
@@ -415,6 +448,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -430,6 +464,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -460,6 +498,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -475,6 +514,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -503,6 +546,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -518,6 +562,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -537,7 +585,7 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
         printed = output.getvalue()
         self.assertIn('[命令错误] 未知命令: /unknown', printed)
-        self.assertIn('[可用命令] /clear, /exit, /status', printed)
+        self.assertIn('[可用命令] /clear, /compact, /exit, /status', printed)
 
     def test_interactive_mode_exits_via_exit_command(self):
         fake_agent_instances = []
@@ -547,6 +595,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -562,6 +611,10 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -581,7 +634,7 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(fake_agent_instances[0].run_calls, [])
         self.assertIn('感谢使用，再见！', output.getvalue())
 
-    def test_plain_exit_text_is_no_longer_treated_as_builtin_exit(self):
+    def test_interactive_mode_handles_compact_command_without_running_agent(self):
         fake_agent_instances = []
 
         class FakeAgent:
@@ -589,6 +642,7 @@ class CliPromptTests(unittest.TestCase):
                 self.kwargs = kwargs
                 self.run_calls = []
                 self.clear_calls = 0
+                self.compact_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -604,6 +658,61 @@ class CliPromptTests(unittest.TestCase):
 
             def clear_session_context(self):
                 self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                self.last_manual = manual
+                return True
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=None
+        ), mock.patch.object(
+            builtins, 'input', side_effect=['/compact', '/exit']
+        ):
+            self.cli.interactive_mode(verbose=False)
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertEqual(fake_agent_instances[0].run_calls, [])
+        self.assertEqual(fake_agent_instances[0].compact_calls, 1)
+        self.assertTrue(fake_agent_instances[0].last_manual)
+        self.assertIn('[处理中] 正在压缩多轮对话上下文历史...', output.getvalue())
+        self.assertIn('[已压缩] 多轮对话上下文历史已精炼', output.getvalue())
+
+    def test_plain_exit_text_is_no_longer_treated_as_builtin_exit(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.run_calls = []
+                self.clear_calls = 0
+                self.compact_calls = 0
+                self.model = 'fake-model'
+                self.thinking_mode = 'auto'
+                self.reasoning_effort = 'medium'
+                self.skills = []
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                self.run_calls.append(instruction)
+                return {'success': True, 'steps': [], 'final_response': 'done'}
+
+            def format_effective_status(self):
+                return '[生效参数]\n  模型: fake-model'
+
+            def clear_session_context(self):
+                self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -646,6 +755,11 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(len(completions), 1)
         self.assertEqual(completions[0].text, '/status')
         self.assertEqual(completions[0].start_position, -3)
+
+        compact_document = types.SimpleNamespace(text_before_cursor='/co')
+        compact_completions = list(completer.get_completions(compact_document, None))
+        self.assertEqual(len(compact_completions), 1)
+        self.assertEqual(compact_completions[0].text, '/compact')
 
         non_command = types.SimpleNamespace(text_before_cursor='打开计算器')
         self.assertEqual(list(completer.get_completions(non_command, None)), [])

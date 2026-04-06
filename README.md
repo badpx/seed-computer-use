@@ -74,7 +74,7 @@ python -m computer_use
 - 左右键编辑当前输入
 - 直接粘贴长文本
 - 历史记录持久化到 `~/.computer_use_history`
-- 输入 slash 命令并自动补齐命令名，例如 `/status`、`/clear`、`/exit`
+- 输入 slash 命令并自动补齐命令名，例如 `/status`、`/clear`、`/compact`、`/exit`
 
 如果运行环境中缺少 `prompt_toolkit`，CLI 会自动回退到基础 `input()` 模式。
 
@@ -157,6 +157,7 @@ CONTEXT_LOG_DIR=./logs
 - 文本消息默认全部保留，包括用户指令、assistant 响应、skill 指令和执行反馈
 - 图片消息只保留最近 `MAX_CONTEXT_SCREENSHOTS` 张，包含当前截图
 - 执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启
+- 当估算上下文占用超过窗口的 90% 时，会按用户指令 turn 自动压缩旧历史：把旧的 `user / assistant / feedback` 总结成更短的 `user + assistant` pair，并丢弃旧截图
 
 历史截图优先保存在限长内存队列中，不依赖本地截图文件回放。传 `--verbose` 时，工具会把传给模型的截图保存到 `CONTEXT_LOG_DIR/screenshots/`，并在 JSONL 日志中以相对路径引用这些图片，而不是内联 base64 数据，方便调试和回放。
 
@@ -166,6 +167,7 @@ CONTEXT_LOG_DIR=./logs
 
 - 可通过 `/status` 查看本次会话真正生效的参数
 - 可通过 `/clear` 清空当前交互会话的多轮上下文历史
+- 可通过 `/compact` 手动压缩当前交互会话的旧历史文本上下文
 - 多条用户输入会持续追加到同一会话历史中，而不是按输入重置上下文
 - skill 一旦在当前交互会话中展开，会转成普通用户消息持久保留并持续生效
 - 传 `--verbose` 时，额外打印 `[配置信息]`，用于展示基础环境和调试相关配置

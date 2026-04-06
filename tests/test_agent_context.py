@@ -517,6 +517,169 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(user_texts, ['First task', 'Second task'])
         self.assertIn("Thought: first\nAction: finished(content='done-1')", assistant_texts)
 
+    def test_compaction_max_tokens_shrinks_by_recency_bucket(self):
+        agent = self._make_agent(persistent_session=True)
+
+        self.assertEqual(agent._get_compaction_max_tokens(29, 30), 400)
+        self.assertEqual(agent._get_compaction_max_tokens(20, 30), 400)
+        self.assertEqual(agent._get_compaction_max_tokens(19, 30), 200)
+        self.assertEqual(agent._get_compaction_max_tokens(10, 30), 200)
+        self.assertEqual(agent._get_compaction_max_tokens(9, 30), 100)
+        self.assertEqual(agent._get_compaction_max_tokens(0, 50), 50)
+
+    def test_compact_session_context_rebuilds_pairs_and_moves_skills_first(self):
+        self.responses[:] = [
+            json.dumps(
+                {
+                    'condensed_user_instruction': 'Compressed first user',
+                    'condensed_assistant_response': 'Compressed first assistant',
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                {
+                    'condensed_user_instruction': 'Compressed second user',
+                    'condensed_assistant_response': 'Compressed second assistant',
+                },
+                ensure_ascii=False,
+            ),
+        ]
+
+        agent = self._make_agent(persistent_session=True)
+        agent.session_history = [
+            agent._build_history_item(
+                kind='user_instruction',
+                api_message={'role': 'user', 'content': 'First task'},
+            ),
+            agent._build_screenshot_item(FakeScreenshot()),
+            agent._build_history_item(
+                kind='assistant',
+                api_message={'role': 'assistant', 'content': 'Thought: first\nAction: wait()'},
+            ),
+            agent._build_execution_feedback_message(
+                {
+                    'step': 1,
+                    'model_input': '',
+                    'thought_summary': 'first',
+                    'execution_status': 'success',
+                    'execution_result': 'ok',
+                    'failure_reason': None,
+                },
+                "wait()",
+            ),
+            agent._build_persistent_skill_message('open-browser', 'Use hotkey ctrl+n.'),
+            agent._build_history_item(
+                kind='user_instruction',
+                api_message={'role': 'user', 'content': 'Second task'},
+            ),
+            agent._build_history_item(
+                kind='assistant',
+                api_message={'role': 'assistant', 'content': "Thought: second\nAction: finished(content='done')"},
+            ),
+        ]
+
+        changed = agent.compact_session_context(manual=True)
+
+        self.assertTrue(changed)
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.calls[0]['max_tokens'], 400)
+        self.assertEqual(self.calls[1]['max_tokens'], 400)
+        self.assertEqual(
+            [item['kind'] for item in agent.session_history],
+            [
+                'persistent_skill',
+                'user_instruction',
+                'assistant',
+                'user_instruction',
+                'assistant',
+            ],
+        )
+        self.assertTrue(
+            agent.session_history[0]['api_message']['content'].startswith(
+                'Loaded Skill Instructions (open-browser)'
+            )
+        )
+        self.assertEqual(agent.session_history[1]['api_message']['content'], 'Compressed first user')
+        self.assertEqual(agent.session_history[2]['api_message']['content'], 'Compressed first assistant')
+        self.assertEqual(agent.session_history[3]['api_message']['content'], 'Compressed second user')
+        self.assertEqual(agent.session_history[4]['api_message']['content'], 'Compressed second assistant')
+        self.assertIsNone(agent.last_usage_total_tokens)
+
+    def test_auto_compaction_runs_before_main_model_call_and_keeps_current_user_instruction(self):
+        original_threshold = self.agent_module.CONTEXT_COMPACTION_THRESHOLD_BYTES
+        self.agent_module.CONTEXT_COMPACTION_THRESHOLD_BYTES = 1
+        try:
+            self.responses[:] = [
+                json.dumps(
+                    {
+                        'condensed_user_instruction': 'Compressed prior user',
+                        'condensed_assistant_response': 'Compressed prior assistant',
+                    },
+                    ensure_ascii=False,
+                ),
+                "Thought: done\nAction: finished(content='ok')",
+            ]
+
+            agent = self._make_agent(persistent_session=True)
+            agent.session_history = [
+                agent._build_history_item(
+                    kind='user_instruction',
+                    api_message={'role': 'user', 'content': 'Older task'},
+                ),
+                agent._build_screenshot_item(FakeScreenshot()),
+                agent._build_history_item(
+                    kind='assistant',
+                    api_message={'role': 'assistant', 'content': 'Thought: older\nAction: wait()'},
+                ),
+                agent._build_execution_feedback_message(
+                    {
+                        'step': 1,
+                        'model_input': '',
+                        'thought_summary': 'older',
+                        'execution_status': 'success',
+                        'execution_result': 'waited',
+                        'failure_reason': None,
+                    },
+                    "wait()",
+                ),
+            ]
+
+            result = agent.run('Fresh task')
+        finally:
+            self.agent_module.CONTEXT_COMPACTION_THRESHOLD_BYTES = original_threshold
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 2)
+        summary_call, main_call = self.calls
+        self.assertEqual(summary_call['max_tokens'], 400)
+        self.assertNotIn('tools', summary_call)
+
+        main_messages = main_call['messages']
+        text_messages = [
+            (message['role'], message['content'])
+            for message in main_messages
+            if isinstance(message.get('content'), str)
+        ]
+        image_messages = [
+            message for message in main_messages
+            if isinstance(message.get('content'), list)
+        ]
+
+        self.assertEqual(
+            text_messages,
+            [
+                ('system', main_messages[0]['content']),
+                ('user', 'Compressed prior user'),
+                ('assistant', 'Compressed prior assistant'),
+                ('user', 'Fresh task'),
+            ],
+        )
+        self.assertEqual(len(image_messages), 1)
+        self.assertEqual(
+            [item['kind'] for item in agent.session_history[:3]],
+            ['user_instruction', 'assistant', 'user_instruction'],
+        )
+
     def test_skill_persists_as_user_message_across_runs(self):
         with tempfile.TemporaryDirectory() as skills_dir:
             skill_path = Path(skills_dir) / 'open-browser'

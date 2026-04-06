@@ -7,7 +7,7 @@ import json
 import io
 import time
 import base64
-from typing import Callable, Dict, Any, List, Optional, Set
+from typing import Callable, Dict, Any, List, Optional, Set, Tuple
 
 from volcenginesdkarkruntime import Ark
 
@@ -21,6 +21,29 @@ from .skills import Skill, discover_skills, skills_to_tools, load_skill
 
 TOKEN_ESTIMATE_BYTES = 4
 SCREENSHOT_TOKEN_ESTIMATE = 2000
+CONTEXT_WINDOW_BYTES = 256 * 1024
+CONTEXT_COMPACTION_THRESHOLD_BYTES = int(CONTEXT_WINDOW_BYTES * 0.9)
+COMPACTION_MAX_TOKENS_BASE = 400
+COMPACTION_MAX_TOKENS_MIN = 50
+COMPACTION_TURNS_PER_BUCKET = 10
+COMPACTION_SUMMARY_SYSTEM_PROMPT = '''You condense historical GUI-agent conversation turns.
+
+You will receive one historical user turn that may include:
+- one or more original user instructions
+- one or more assistant Thought/Action replies
+- optional execution feedback messages
+
+Return a compact JSON object with exactly these keys:
+- "condensed_user_instruction"
+- "condensed_assistant_response"
+
+Requirements:
+- Preserve the user's real goal, constraints, corrections, and latest intent
+- Preserve important assistant findings, decisions, failure reasons, and progress
+- Fold execution feedback into the assistant summary instead of keeping it separate
+- Keep both fields concise but specific
+- Output valid JSON only, with no markdown fences or extra text
+'''
 
 
 class ComputerUseAgent:
@@ -161,6 +184,7 @@ class ComputerUseAgent:
             enabled=self.save_context_log,
             log_dir=self.context_log_dir,
         )
+        self._is_compacting = False
 
         # 当前步骤
         self.current_step = 0
@@ -245,6 +269,9 @@ class ComputerUseAgent:
                 
                 # 2. 调用模型
                 text_input = ''
+                self._maybe_compact_before_model_call(
+                    current_screenshot_item=current_screenshot_item,
+                )
                 messages, logged_messages, message_summary, retained_screenshot_count = (
                     self._build_request_messages(
                         current_screenshot_item=current_screenshot_item,
@@ -601,6 +628,14 @@ class ComputerUseAgent:
         self.last_context_estimated_bytes = 0
         self._notify_runtime_status()
 
+    def compact_session_context(self, manual: bool = False) -> bool:
+        """压缩当前持久会话的历史上下文。"""
+        if not self.persistent_session or self._is_compacting:
+            return False
+        return self._compact_session_context(
+            trigger_reason='manual' if manual else 'auto'
+        )
+
     def _reset_run_state(self) -> None:
         """重置单次 run 的临时状态。"""
         self.history = []
@@ -673,6 +708,279 @@ class ComputerUseAgent:
                 return
         self._append_history_item(
             self._build_persistent_skill_message(skill_name, skill_content)
+        )
+
+    def _count_history_kinds(self, items: List[Dict[str, Any]]) -> Dict[str, int]:
+        """统计历史项类型数量。"""
+        counts: Dict[str, int] = {}
+        for item in items:
+            kind = item.get('kind', 'unknown')
+            counts[kind] = counts.get(kind, 0) + 1
+        return counts
+
+    def _extract_text_message_content(self, item: Dict[str, Any]) -> str:
+        """提取历史项中的纯文本内容。"""
+        api_message = item.get('api_message') or {}
+        content = api_message.get('content')
+        return content if isinstance(content, str) else ''
+
+    def _build_compaction_turns(
+        self,
+        preserve_latest_pending_user: bool = False,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """将会话历史拆分为技能消息与按用户输入分组的 turn。"""
+        skill_items: List[Dict[str, Any]] = []
+        trailing_user_items: List[Dict[str, Any]] = []
+        source_items = list(self.session_history)
+
+        if preserve_latest_pending_user:
+            pending_items: List[Dict[str, Any]] = []
+            for item in reversed(source_items):
+                kind = item.get('kind')
+                if kind == 'user_instruction':
+                    pending_items.append(item)
+                    continue
+                if kind == 'persistent_skill':
+                    continue
+                if pending_items:
+                    break
+                pending_items = []
+                break
+            if pending_items:
+                trailing_user_items = list(reversed(pending_items))
+                source_items = source_items[: len(source_items) - len(trailing_user_items)]
+
+        turns: List[Dict[str, Any]] = []
+        current_turn: Optional[Dict[str, Any]] = None
+
+        for item in source_items:
+            kind = item.get('kind')
+            if kind == 'persistent_skill':
+                skill_items.append(item)
+                continue
+            if kind == 'screenshot':
+                continue
+
+            text_content = self._extract_text_message_content(item)
+            if not text_content:
+                continue
+
+            if kind == 'user_instruction':
+                if current_turn is not None:
+                    turns.append(current_turn)
+                current_turn = {
+                    'user_messages': [text_content],
+                    'assistant_messages': [],
+                    'feedback_messages': [],
+                }
+                continue
+
+            if current_turn is None:
+                current_turn = {
+                    'user_messages': [],
+                    'assistant_messages': [],
+                    'feedback_messages': [],
+                }
+
+            if kind == 'assistant':
+                current_turn['assistant_messages'].append(text_content)
+            elif kind == 'execution_feedback':
+                current_turn['feedback_messages'].append(text_content)
+
+        if current_turn is not None:
+            turns.append(current_turn)
+
+        merged_turns: List[Dict[str, Any]] = []
+        for turn in turns:
+            if (
+                merged_turns
+                and not merged_turns[-1]['assistant_messages']
+                and not merged_turns[-1]['feedback_messages']
+            ):
+                merged_turns[-1]['user_messages'].extend(turn['user_messages'])
+                merged_turns[-1]['assistant_messages'].extend(turn['assistant_messages'])
+                merged_turns[-1]['feedback_messages'].extend(turn['feedback_messages'])
+            else:
+                merged_turns.append(turn)
+
+        return skill_items, merged_turns, trailing_user_items
+
+    def _get_compaction_max_tokens(self, turn_index: int, total_turns: int) -> int:
+        """按从近到远的分组动态收缩总结输出上限。"""
+        distance_from_latest = max(0, total_turns - 1 - turn_index)
+        bucket_index = distance_from_latest // COMPACTION_TURNS_PER_BUCKET
+        max_tokens = COMPACTION_MAX_TOKENS_BASE // (2 ** bucket_index)
+        return max(COMPACTION_MAX_TOKENS_MIN, max_tokens)
+
+    def _build_compaction_turn_prompt(self, turn: Dict[str, Any]) -> str:
+        """构建单个历史 turn 的总结输入。"""
+        sections = ['Summarize this historical GUI turn.']
+        user_messages = turn.get('user_messages') or []
+        assistant_messages = turn.get('assistant_messages') or []
+        feedback_messages = turn.get('feedback_messages') or []
+
+        if user_messages:
+            sections.append('Original User Instructions:')
+            for index, message in enumerate(user_messages, start=1):
+                sections.append(f'{index}. {message}')
+        if assistant_messages:
+            sections.append('Assistant Responses:')
+            for index, message in enumerate(assistant_messages, start=1):
+                sections.append(f'{index}. {message}')
+        if feedback_messages:
+            sections.append('Execution Feedback:')
+            for index, message in enumerate(feedback_messages, start=1):
+                sections.append(f'{index}. {message}')
+        return '\n'.join(sections)
+
+    def _parse_compaction_response(self, response_text: str) -> Dict[str, str]:
+        """解析历史压缩总结调用返回的 JSON。"""
+        cleaned = response_text.strip()
+        if cleaned.startswith('```'):
+            cleaned = cleaned.strip('`')
+            cleaned = cleaned.removeprefix('json').strip()
+        start = cleaned.find('{')
+        end = cleaned.rfind('}')
+        if start != -1 and end != -1 and end >= start:
+            cleaned = cleaned[start:end + 1]
+        data = json.loads(cleaned)
+        user_text = str(data.get('condensed_user_instruction') or '').strip()
+        assistant_text = str(data.get('condensed_assistant_response') or '').strip()
+        if not user_text:
+            user_text = '(empty summary)'
+        if not assistant_text:
+            assistant_text = '(empty summary)'
+        return {
+            'condensed_user_instruction': user_text,
+            'condensed_assistant_response': assistant_text,
+        }
+
+    def _summarize_turn_for_compaction(
+        self,
+        turn: Dict[str, Any],
+        max_tokens: int,
+    ) -> Dict[str, str]:
+        """调用模型总结单个历史 turn。"""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': COMPACTION_SUMMARY_SYSTEM_PROMPT,
+                },
+                {
+                    'role': 'user',
+                    'content': self._build_compaction_turn_prompt(turn),
+                },
+            ],
+            temperature=self.temperature,
+            thinking={'type': self.thinking_mode},
+            reasoning_effort=self.reasoning_effort,
+            max_tokens=max_tokens,
+        )
+        response_text = response.choices[0].message.content or ''
+        return self._parse_compaction_response(response_text)
+
+    def _compact_session_context(
+        self,
+        trigger_reason: str,
+        preserve_latest_pending_user: bool = False,
+    ) -> bool:
+        """执行一次会话历史压缩。"""
+        if not self.session_history:
+            return False
+
+        skill_items, turns, trailing_user_items = self._build_compaction_turns(
+            preserve_latest_pending_user=preserve_latest_pending_user,
+        )
+        if not turns:
+            rebuilt_history = list(skill_items) + list(trailing_user_items)
+            changed = rebuilt_history != self.session_history
+            if changed:
+                self.session_history = rebuilt_history
+                self.last_context_estimated_bytes = self._estimate_next_context_bytes()
+                self._notify_runtime_status()
+            return changed
+
+        before_items = list(self.session_history)
+        before_counts = self._count_history_kinds(before_items)
+        compacted_turns: List[Dict[str, str]] = []
+
+        self._is_compacting = True
+        try:
+            for turn_index, turn in enumerate(turns):
+                summary = self._summarize_turn_for_compaction(
+                    turn,
+                    max_tokens=self._get_compaction_max_tokens(turn_index, len(turns)),
+                )
+                compacted_turns.append(summary)
+        except Exception:
+            return False
+        finally:
+            self._is_compacting = False
+
+        rebuilt_history: List[Dict[str, Any]] = list(skill_items)
+        for summary in compacted_turns:
+            rebuilt_history.append(
+                self._build_history_item(
+                    kind='user_instruction',
+                    api_message={
+                        'role': 'user',
+                        'content': summary['condensed_user_instruction'],
+                    },
+                )
+            )
+            rebuilt_history.append(
+                self._build_history_item(
+                    kind='assistant',
+                    api_message={
+                        'role': 'assistant',
+                        'content': summary['condensed_assistant_response'],
+                    },
+                )
+            )
+        rebuilt_history.extend(trailing_user_items)
+
+        changed = rebuilt_history != before_items
+        self.session_history = rebuilt_history
+        self.last_usage_total_tokens = None
+        self.last_context_estimated_bytes = self._estimate_next_context_bytes()
+        self._notify_runtime_status()
+
+        after_counts = self._count_history_kinds(rebuilt_history)
+        self.context_logger.log_event(
+            'history_compaction',
+            trigger_reason=trigger_reason,
+            changed=changed,
+            before_message_count=len(before_items),
+            after_message_count=len(rebuilt_history),
+            before_turn_count=len(turns),
+            after_turn_count=len(compacted_turns),
+            before_screenshot_count=before_counts.get('screenshot', 0),
+            after_screenshot_count=after_counts.get('screenshot', 0),
+            persistent_skill_count=after_counts.get('persistent_skill', 0),
+            context_estimated_bytes=self.last_context_estimated_bytes,
+        )
+        return changed
+
+    def _maybe_compact_before_model_call(
+        self,
+        current_screenshot_item: Dict[str, Any],
+    ) -> None:
+        """在正式主模型调用前按阈值自动压缩历史。"""
+        if not self.persistent_session or self._is_compacting:
+            return
+
+        messages, _, _, _ = self._build_request_messages(
+            current_screenshot_item=current_screenshot_item,
+        )
+        estimated_bytes = self._estimate_context_bytes(messages)
+        if estimated_bytes <= CONTEXT_COMPACTION_THRESHOLD_BYTES:
+            return
+
+        self._compact_session_context(
+            trigger_reason='auto',
+            preserve_latest_pending_user=True,
         )
 
     def format_effective_status(self) -> str:
