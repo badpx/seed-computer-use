@@ -226,6 +226,7 @@ class ActionParser:
         
         return params
 
+
     def _extract_point_value(
         self,
         value: str,

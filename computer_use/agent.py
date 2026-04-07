@@ -1088,15 +1088,17 @@ class ComputerUseAgent:
             response = self.client.chat.completions.create(**kwargs)
             choice = response.choices[0]
 
+            tool_calls = getattr(choice.message, 'tool_calls', None) or []
             if getattr(choice, 'finish_reason', None) != 'tool_calls':
                 # 正常文本响应，直接返回
+                return response, self._extract_response_text(response)
+            if not self._should_load_skills_from_tool_calls(tool_calls):
                 return response, self._extract_response_text(response)
 
             # 模型请求加载 Skill：注入内容后重新调用
             # TODO: Level 3 — 区分 skill__ 前缀（加载指南）与 resource__/script__ 前缀
             #   （按需加载附加资源文件或执行脚本并注入输出），以支持完整的三层渐进式披露。
             messages.append(choice.message.model_dump())
-            tool_calls = choice.message.tool_calls or []
             for tc in tool_calls:
                 skill_name = tc.function.name.removeprefix('skill__')
                 self.activated_skills.add(skill_name)
@@ -1119,6 +1121,15 @@ class ComputerUseAgent:
 
         # 超出 skill 加载轮数上限，返回最后一次响应
         return response, self._extract_response_text(response) if response else ''
+
+    def _should_load_skills_from_tool_calls(self, tool_calls: List[Any]) -> bool:
+        """仅当 tool_calls 全部为 skill__ 前缀时，才进入技能加载分支。"""
+        if not tool_calls:
+            return False
+        return all(
+            str(getattr(getattr(tc, 'function', None), 'name', '')).startswith('skill__')
+            for tc in tool_calls
+        )
 
     def _extract_response_text(self, response_obj: Any) -> str:
         """提取模型可解析文本，优先 content，缺失时回退 reasoning_content。"""
@@ -1347,6 +1358,9 @@ class ComputerUseAgent:
         if isinstance(value, (str, int, float, bool)) or value is None:
             return value
 
+        if isinstance(value, (list, tuple)):
+            return [self._serialize_usage_value(item) for item in value]
+
         if isinstance(value, dict):
             return {
                 key: self._serialize_usage_value(item)
@@ -1379,11 +1393,22 @@ class ComputerUseAgent:
         )
         return f'{action_type}({params})'
 
-    def _build_logged_model_response(self, response_obj: Any) -> Dict[str, str]:
-        """提取方舟响应中的 reasoning 字段用于日志记录。"""
+    def _build_logged_model_response(self, response_obj: Any) -> Dict[str, Any]:
+        """提取方舟响应中的调试字段用于日志记录。"""
+        choice = self._get_first_choice(response_obj)
+        message = getattr(choice, 'message', None) if choice is not None else None
+        tool_calls = getattr(message, 'tool_calls', None) if message is not None else None
+
         return {
             'reasoning': self._extract_reasoning_content(response_obj).strip(),
+            'finish_reason': getattr(choice, 'finish_reason', None),
+            'tool_calls': self._serialize_usage_value(tool_calls) if tool_calls else None,
         }
+
+    def _get_first_choice(self, response_obj: Any) -> Optional[Any]:
+        """获取响应对象中的首个 choice。"""
+        choices = getattr(response_obj, 'choices', None) or []
+        return choices[0] if choices else None
 
     def _build_screenshot_item(
         self,

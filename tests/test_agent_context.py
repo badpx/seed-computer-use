@@ -370,6 +370,8 @@ class AgentContextTests(unittest.TestCase):
             },
         )
         self.assertEqual(model_response['reasoning'], 'deep reasoning trace')
+        self.assertEqual(model_response['finish_reason'], 'stop')
+        self.assertIsNone(model_response['tool_calls'])
 
     def test_run_uses_reasoning_content_when_content_is_empty(self):
         self.responses[:] = [
@@ -411,6 +413,37 @@ class AgentContextTests(unittest.TestCase):
 
         self.assertEqual(model_response['raw_response'], '')
         self.assertEqual(model_response['reasoning'], "Thought: done\nAction: finished(content='ok')")
+
+    def test_model_response_log_includes_finish_reason_and_tool_calls(self):
+        self.responses[:] = [
+            {
+                'content': "Thought: action text should still finish\nAction: finished(content='done')",
+                'finish_reason': 'tool_calls',
+                'tool_calls': [FakeToolCall('drag', 'tc-drag')],
+            }
+        ]
+
+        agent = self._make_agent(
+            save_context_log=True,
+            context_log_dir=str(self.log_dir),
+        )
+        result = agent.run('Log tool call metadata')
+
+        self.assertTrue(result['success'])
+        log_files = list(self.log_dir.glob('task_*.jsonl'))
+        self.assertEqual(len(log_files), 1)
+
+        records = [
+            json.loads(line)
+            for line in log_files[0].read_text(encoding='utf-8').splitlines()
+        ]
+        model_response = next(record for record in records if record['event'] == 'model_response')
+
+        self.assertEqual(model_response['finish_reason'], 'tool_calls')
+        self.assertEqual(
+            model_response['tool_calls'],
+            [{'id': 'tc-drag', 'function': {'name': 'drag', 'arguments': '{}'}}],
+        )
 
     def test_run_prefers_content_over_reasoning_content(self):
         self.responses[:] = [
@@ -1074,6 +1107,26 @@ class AgentContextTests(unittest.TestCase):
         tool_msg = next(m for m in second_call_messages if m['role'] == 'tool')
         self.assertIn('hotkey ctrl+n', tool_msg['content'])
         self.assertEqual(tool_msg['tool_call_id'], 'tc-42')
+
+    def test_non_skill_tool_call_does_not_trigger_skill_loading(self):
+        self.responses[:] = [
+            {
+                'content': (
+                    "Thought: action text should be parsed directly\n"
+                    "Action: finished(content='done')"
+                ),
+                'finish_reason': 'tool_calls',
+                'tool_calls': [FakeToolCall('drag', 'tc-drag')],
+            }
+        ]
+
+        agent = self._make_agent(enable_skills=True)
+        result = agent.run('Move cursor to bottom-right')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(result['final_response'], 'done')
+        self.assertEqual(result['runtime_status']['activated_skills'], [])
 
     def test_max_skill_rounds_prevents_infinite_loop(self):
         """If the model keeps requesting skills, the loop stops after max_skill_rounds."""
