@@ -198,7 +198,10 @@ class ComputerUseAgent:
             log_dir=self.context_log_dir,
         )
         self._is_compacting = False
-        self.current_display_info = self._resolve_display_info(self.display_index)
+        self.current_display_info = self._resolve_display_info(
+            self.display_index,
+            allow_fallback=True,
+        )
 
         # 当前步骤
         self.current_step = 0
@@ -237,7 +240,10 @@ class ComputerUseAgent:
             self._reset_session_state()
         self._reset_run_state()
         self._append_user_instruction_message(instruction)
-        self.current_display_info = self._resolve_display_info(self.display_index)
+        self.current_display_info = self._resolve_display_info(
+            self.display_index,
+            allow_fallback=True,
+        )
 
         self.context_logger.start_task(
             instruction=instruction,
@@ -269,7 +275,10 @@ class ComputerUseAgent:
                     print(f"\n[步骤 {self.current_step}/{self.max_steps}]")
                 
                 # 1. 截图
-                self.current_display_info = self._resolve_display_info(self.display_index)
+                self.current_display_info = self._resolve_display_info(
+                    self.display_index,
+                    allow_fallback=True,
+                )
                 screenshot, _ = capture_screenshot(display_index=self.display_index)
                 img_width, img_height = screenshot.size
                 model_screenshot = self._prepare_model_screenshot(screenshot)
@@ -1049,9 +1058,28 @@ class ComputerUseAgent:
         payload['bounds'] = self._display_bounds_list(payload)
         return payload
 
-    def _resolve_display_info(self, display_index: Optional[int] = None) -> Dict[str, Any]:
+    def _resolve_display_info(
+        self,
+        display_index: Optional[int] = None,
+        allow_fallback: bool = False,
+    ) -> Dict[str, Any]:
         """解析当前目标显示器信息。"""
-        return self._normalize_display_info(resolve_display(display_index))
+        target_index = self.display_index if display_index is None else int(display_index)
+        try:
+            return self._normalize_display_info(resolve_display(target_index))
+        except ValueError as exc:
+            if not allow_fallback or target_index == 0:
+                raise
+            if '超出范围' not in str(exc):
+                raise
+
+            fallback_info = self._normalize_display_info(resolve_display(0))
+            self.display_index = 0
+            if self.verbose:
+                print(
+                    f"[警告] 目标显示器 {target_index} 不可用，已回退到主显示器 0"
+                )
+            return fallback_info
 
     def _display_bounds_list(self, display_info: Dict[str, Any]) -> List[int]:
         """返回 [x, y, width, height] 形式的显示器区域。"""

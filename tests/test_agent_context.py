@@ -1064,6 +1064,34 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(model_call['display_index'], 1)
         self.assertEqual(model_call['display_bounds'], [-1440, 90, 1280, 720])
 
+    def test_invalid_configured_display_falls_back_to_primary_and_warns(self):
+        self.responses[:] = [
+            "Thought: done\nAction: finished(content='ok')",
+        ]
+
+        original_resolve_display = self.agent_module.resolve_display
+
+        def fake_resolve_display(display_index=None):
+            index = 0 if display_index is None else int(display_index)
+            if index == 2:
+                raise ValueError('显示器索引 2 超出范围，当前仅检测到 2 台显示器')
+            return self._fake_resolve_display(index)
+
+        self.agent_module.resolve_display = fake_resolve_display
+        output = io.StringIO()
+        try:
+            with redirect_stdout(output):
+                agent = self._make_agent(display_index=2, verbose=True)
+                result = agent.run('Fallback to the primary display')
+        finally:
+            self.agent_module.resolve_display = original_resolve_display
+
+        self.assertTrue(result['success'])
+        self.assertEqual(agent.display_index, 0)
+        self.assertEqual(self.capture_calls[0]['display_index'], 0)
+        printed = output.getvalue()
+        self.assertIn('[警告] 目标显示器 2 不可用，已回退到主显示器 0', printed)
+
     def test_agent_passes_reasoning_effort_and_thinking_to_chat_api(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
 
