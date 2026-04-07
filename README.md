@@ -109,7 +109,7 @@ python -m computer_use "打开浏览器"
 | 模型截图尺寸 | `SCREENSHOT_SIZE` | - | 传给模型前的截图宽高，仅支持相同宽高值，例如 `1024` 表示缩放为 `1024x1024` |
 | 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中最多保留的截图数量，包含当前轮 |
 | 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将历史执行结果和失败原因注入多轮上下文 |
-| 最大步数 | `MAX_STEPS` | `20` | 最大执行步数 |
+| 最大步数 | `MAX_STEPS` | `100` | 最大执行步数 |
 | 自然滚动 | `NATURAL_SCROLL` | 自动检测 | 是否按系统自然滚动方向解释 scroll 偏移 |
 | 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
 | 日志目录 | `CONTEXT_LOG_DIR` | `./logs` | 上下文日志保存目录 |
@@ -131,7 +131,7 @@ COORDINATE_SCALE=1000
 SCREENSHOT_SIZE=
 MAX_CONTEXT_SCREENSHOTS=5
 INCLUDE_EXECUTION_FEEDBACK=false
-MAX_STEPS=20
+MAX_STEPS=100
 
 # 滚动方向；留空时自动检测系统设置
 NATURAL_SCROLL=

@@ -81,7 +81,7 @@ class Config:
         'NATURAL_SCROLL': '',
         'CONTEXT_LOG_DIR': './logs',
         'SAVE_CONTEXT_LOG': 'true',
-        'MAX_STEPS': '20',
+        'MAX_STEPS': '100',
         'TEMPERATURE': '0.0',
         'THINKING_MODE': 'auto',
         'REASONING_EFFORT': 'medium',
@@ -232,7 +232,7 @@ class Config:
     @property
     def max_steps(self) -> int:
         """最大执行步数"""
-        return self.get_int('MAX_STEPS', 20)
+        return self.get_int('MAX_STEPS', 100)
 
     @property
     def natural_scroll(self) -> bool:
