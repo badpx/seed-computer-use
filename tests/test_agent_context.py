@@ -423,11 +423,13 @@ class AgentContextTests(unittest.TestCase):
             'timezone': 'Asia/Shanghai (CST), UTC+08:00',
             'date': '2026-04-06',
             'weekday': 'Monday',
+            'operating_system': 'macOS 15.4',
         }
 
         prompt = agent._build_system_prompt()
 
         self.assertIn('## Runtime Context', prompt)
+        self.assertIn('- Operating system: macOS 15.4', prompt)
         self.assertIn('- Local timezone: Asia/Shanghai (CST), UTC+08:00', prompt)
         self.assertIn('- Local date: 2026-04-06', prompt)
         self.assertIn('- Local weekday: Monday', prompt)
@@ -445,6 +447,23 @@ class AgentContextTests(unittest.TestCase):
         prompt = agent._build_system_prompt()
 
         self.assertIn('- Approximate location: Shanghai', prompt)
+
+    def test_get_operating_system_description_formats_macos_versions(self):
+        agent = self._make_agent(verbose=False)
+
+        self.agent_module.platform.system = lambda: 'Darwin'
+        self.agent_module.platform.mac_ver = lambda: ('15.4', ('', '', ''), '')
+
+        self.assertEqual(agent._get_operating_system_description(), 'macOS 15.4')
+
+    def test_get_operating_system_description_falls_back_to_generic_linux(self):
+        agent = self._make_agent(verbose=False)
+
+        self.agent_module.platform.system = lambda: 'Linux'
+        self.agent_module.platform.release = lambda: '6.8.0'
+        agent._read_linux_os_release_name = lambda: None
+
+        self.assertEqual(agent._get_operating_system_description(), 'Linux')
 
     def test_init_output_can_be_suppressed(self):
         output = io.StringIO()

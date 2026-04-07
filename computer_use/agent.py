@@ -6,6 +6,7 @@
 import json
 import io
 import os
+import platform
 import time
 import base64
 from datetime import datetime
@@ -1132,9 +1133,14 @@ class ComputerUseAgent:
     def _build_runtime_context_prompt(self) -> str:
         """构建注入到 system prompt 的当前运行时上下文。"""
         runtime_context = self._get_runtime_context()
+        operating_system = (
+            runtime_context.get('operating_system')
+            or self._get_operating_system_description()
+        )
         lines = [
             '',
             '## Runtime Context',
+            f"- Operating system: {operating_system}",
             f"- Local timezone: {runtime_context['timezone']}",
             f"- Local date: {runtime_context['date']}",
             f"- Local weekday: {runtime_context['weekday']}",
@@ -1157,6 +1163,7 @@ class ComputerUseAgent:
             timezone_display = f'{timezone_display}, {timezone_offset}'
 
         runtime_context = {
+            'operating_system': self._get_operating_system_description(),
             'timezone': timezone_display,
             'date': current_local_time.strftime('%Y-%m-%d'),
             'weekday': current_local_time.strftime('%A'),
@@ -1193,6 +1200,38 @@ class ComputerUseAgent:
         if not raw_offset or len(raw_offset) != 5:
             return ''
         return f'UTC{raw_offset[:3]}:{raw_offset[3:]}'
+
+    def _get_operating_system_description(self) -> str:
+        """返回适合注入 prompt 的人类可读操作系统描述。"""
+        system_name = platform.system()
+
+        if system_name == 'Darwin':
+            macos_version = platform.mac_ver()[0]
+            return f'macOS {macos_version}' if macos_version else 'macOS'
+
+        if system_name == 'Windows':
+            windows_release = platform.release()
+            return f'Windows {windows_release}' if windows_release else 'Windows'
+
+        if system_name == 'Linux':
+            linux_name = self._read_linux_os_release_name()
+            return linux_name or 'Linux'
+
+        return system_name or 'Unknown'
+
+    def _read_linux_os_release_name(self) -> Optional[str]:
+        """从 /etc/os-release 读取 Linux 发行版名称。"""
+        os_release_path = '/etc/os-release'
+        try:
+            with open(os_release_path, 'r', encoding='utf-8') as file_obj:
+                for raw_line in file_obj:
+                    line = raw_line.strip()
+                    if line.startswith('PRETTY_NAME='):
+                        return line.split('=', 1)[1].strip().strip('"')
+        except OSError:
+            return None
+
+        return None
 
     def _get_approximate_location(self) -> Optional[str]:
         """返回可用的城镇级大致位置；当前默认不可用。"""
