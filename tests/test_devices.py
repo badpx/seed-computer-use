@@ -98,6 +98,14 @@ class DeviceAdapterTests(unittest.TestCase):
 
 
 class DeviceRegistryTests(unittest.TestCase):
+    def test_discover_device_plugins_includes_built_in_android_adb(self):
+        from computer_use.devices.registry import discover_device_plugins
+
+        plugins = discover_device_plugins()
+
+        self.assertIn('android_adb', plugins)
+        self.assertEqual(plugins['android_adb'].name, 'android_adb')
+
     def test_discover_device_plugins_finds_project_root_plugin_by_default(self):
         from computer_use.devices import registry as registry_module
 

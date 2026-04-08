@@ -268,6 +268,45 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             check=False,
         )
 
+    def test_open_app_accepts_package_name_alias(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand('open_app', {'package_name': 'com.demo.app'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'monkey',
+                    '-p',
+                    'com.demo.app',
+                    '-c',
+                    'android.intent.category.LAUNCHER',
+                    '1',
+                ]
+            ),
+        ) as run_mock:
+            result = adapter.execute_command(command)
+
+        self.assertEqual(result, 'open_app 执行成功')
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'monkey',
+                '-p',
+                'com.demo.app',
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
     def test_scroll_missing_point_raises_clear_error(self):
         from computer_use.devices.base import DeviceCommand
 

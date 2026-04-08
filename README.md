@@ -118,6 +118,15 @@ python -m computer_use "打开浏览器"
 | 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
 | 日志目录 | `CONTEXT_LOG_DIR` | `./logs` | 上下文日志保存目录 |
 
+### Android ADB Device
+
+使用 `DEVICE_NAME=android_adb` 可以让 Agent 通过 `adb` 控制已连接的 Android 手机，而不是桌面设备。
+
+- 运行前必须先安装 `adb`，并确保它在 `PATH` 中可用
+- 目标手机需要在启动 Agent 之前就已经连接到电脑
+- 截图来自 `adb exec-out screencap -p`
+- 输入通过 `adb shell input` 发送
+
 ### `.env` 文件示例
 
 ```bash
@@ -143,6 +152,10 @@ MAX_STEPS=100
 
 # 滚动方向；留空时自动检测系统设置
 NATURAL_SCROLL=
+
+# Android ADB 设备示例
+# 需要先安装 adb 并连接好手机后再启动 agent
+# DEVICE_NAME=android_adb
 
 # 调试日志配置
 SAVE_CONTEXT_LOG=true
