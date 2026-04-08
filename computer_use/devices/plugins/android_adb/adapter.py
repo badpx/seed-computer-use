@@ -112,7 +112,7 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
 
         if command_type == 'scroll':
             point = self._require_point(payload, 'point', default=[0, 0])
-            axis_name, axis_delta = self._resolve_scroll_axis(payload)
+            axis_arg = self._resolve_scroll_axis(payload)
             self._run_adb(
                 [
                     'shell',
@@ -122,17 +122,21 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
                     str(point[0]),
                     str(point[1]),
                     '--axis',
-                    axis_name,
-                    str(axis_delta),
+                    axis_arg,
                 ],
                 action_label='scroll',
             )
             return 'scroll 执行成功'
 
         if command_type == 'open_app':
-            package_name = str(payload.get('package') or payload.get('package_name') or '').strip()
+            package_name = str(
+                payload.get('app_name')
+                or payload.get('package')
+                or payload.get('package_name')
+                or ''
+            ).strip()
             if not package_name:
-                raise ValueError('android_adb open_app 需要 package')
+                raise ValueError('android_adb open_app 需要 app_name')
             self._run_adb(
                 [
                     'shell',
@@ -277,19 +281,19 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
             raise ValueError('android_adb duration_ms 必须大于 0')
         return duration_ms
 
-    def _resolve_scroll_axis(self, payload: Dict[str, Any]) -> tuple[str, int]:
+    def _resolve_scroll_axis(self, payload: Dict[str, Any]) -> str:
         direction = str(payload.get('direction', 'down')).strip().lower()
         steps = int(abs(float(payload.get('steps', 50))))
         if steps <= 0:
             raise ValueError('android_adb scroll steps 必须大于 0')
         if direction == 'down':
-            return 'VSCROLL', steps
+            return f'VSCROLL,{steps}'
         if direction == 'up':
-            return 'VSCROLL', -steps
+            return f'VSCROLL,{-steps}'
         if direction == 'right':
-            return 'HSCROLL', steps
+            return f'HSCROLL,{steps}'
         if direction == 'left':
-            return 'HSCROLL', -steps
+            return f'HSCROLL,{-steps}'
         raise ValueError(f'android_adb 不支持滚动方向: {direction}')
 
     def _escape_text(self, value: str) -> str:

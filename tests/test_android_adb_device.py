@@ -213,7 +213,7 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
         from computer_use.devices.base import DeviceCommand
 
         adapter = self._make_adapter()
-        command = DeviceCommand('open_app', {'package': 'com.demo.app'})
+        command = DeviceCommand('open_app', {'app_name': 'com.demo.app'})
 
         with mock.patch(
             'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
@@ -242,6 +242,50 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
                 '-c',
                 'android.intent.category.LAUNCHER',
                 '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
+    def test_scroll_maps_to_touchscreen_scroll_axis_argument(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand(
+            'scroll',
+            {'point': [50, 60], 'direction': 'down', 'steps': 2},
+        )
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'input',
+                    'touchscreen',
+                    'scroll',
+                    '50',
+                    '60',
+                    '--axis',
+                    'VSCROLL,2',
+                ]
+            ),
+        ) as run_mock:
+            result = adapter.execute_command(command)
+
+        self.assertEqual(result, 'scroll 执行成功')
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'input',
+                'touchscreen',
+                'scroll',
+                '50',
+                '60',
+                '--axis',
+                'VSCROLL,2',
             ],
             capture_output=True,
             check=False,
