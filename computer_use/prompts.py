@@ -29,23 +29,13 @@ wait(seconds=5) # Sleep for the specified seconds and take a screenshot to check
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
 
 ## Note
-- Normalize the x and y coordinates of each point and scale them into the interval [0, 1000].
 - Use {language} in `Thought` part.
+- Normalize the x and y coordinates of each point and scale them into the interval [0, 1000].
 - Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
 - Use the prior user execution feedback to avoid repeating failed actions.
 - The latest image attached in the conversation is the current screenshot. Earlier image messages, if present, are older screenshots for reference only.
 - If a previous step failed, adjust your next action using the recorded failure reason.
 '''
-
-# 技能提示词附加内容，在技能系统启用时追加到系统提示词末尾
-SKILLS_PROMPT_ADDENDUM = '''
-
-## Skills
-You have access to skill tools that provide specialized instructions for complex tasks.
-When you encounter a task that matches an available skill, call the corresponding skill tool to load detailed instructions before proceeding with Thought/Action.
-After loading a skill, follow its instructions using the Action Space defined above.
-'''
-
 
 # 手机 GUI 任务场景的提示词模板（可选）
 PHONE_USE_DOUBAO = '''
@@ -69,8 +59,15 @@ finished(content='xxx') # Use escape characters \\', \\", and \\n in content par
 
 ## Note
 - Use {language} in `Thought` part.
+- Normalize the x and y coordinates of each point and scale them into the interval [0, 1000].
 - Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
+'''
 
-## User Instruction
-{instruction}
+# 技能提示词附加内容，在技能系统启用时追加到系统提示词末尾
+SKILLS_PROMPT_ADDENDUM = '''
+
+## Skills
+You have access to skill tools that provide specialized instructions for complex tasks.
+When you encounter a task that matches an available skill, call the corresponding skill tool to load detailed instructions before proceeding with Thought/Action.
+After loading a skill, follow its instructions using the Action Space defined above.
 '''
