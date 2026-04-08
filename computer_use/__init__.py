@@ -29,13 +29,6 @@ def __getattr__(name):
             'parse_action': parse_action,
             'ActionParser': ActionParser,
         }[name]
-    if name in {'execute_action', 'ActionExecutor'}:
-        from .action_executor import ActionExecutor, execute_action
-
-        return {
-            'execute_action': execute_action,
-            'ActionExecutor': ActionExecutor,
-        }[name]
     if name in {'Skill', 'discover_skills'}:
         from .skills import Skill, discover_skills
 
@@ -69,10 +62,6 @@ __all__ = [
     # 动作解析
     'parse_action',
     'ActionParser',
-
-    # 动作执行
-    'execute_action',
-    'ActionExecutor',
 
     # 技能系统
     'Skill',

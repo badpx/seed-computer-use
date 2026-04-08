@@ -106,8 +106,8 @@ def check_imports():
         from computer_use.action_parser import parse_action
         print("  ✓ computer_use.action_parser")
         
-        from computer_use.action_executor import execute_action
-        print("  ✓ computer_use.action_executor")
+        from computer_use.devices.plugins.local.executor import LocalActionExecutor
+        print("  ✓ computer_use.devices.plugins.local.executor")
         
         from computer_use.agent import ComputerUseAgent
         print("  ✓ computer_use.agent")

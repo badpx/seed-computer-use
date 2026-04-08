@@ -218,10 +218,8 @@ class DeviceCommandMapperTests(unittest.TestCase):
         self.assertEqual(command.payload['point'], [120, 55])
 
     def test_normalize_relative_click_coordinates_to_frame_pixels(self):
-        from computer_use.devices.command_mapper import (
-            map_action_to_command,
-            normalize_command_coordinates,
-        )
+        from computer_use.devices.command_mapper import map_action_to_command
+        from computer_use.devices.coordinates import normalize_command_coordinates
 
         command = map_action_to_command(
             {
@@ -242,14 +240,12 @@ class DeviceCommandMapperTests(unittest.TestCase):
 
         self.assertEqual(normalized.payload['point'], [50, 50])
         self.assertEqual(normalized.metadata['coordinate_space'], 'pixel')
-        self.assertEqual(normalized.metadata['model_image_width'], 200)
-        self.assertEqual(normalized.metadata['model_image_height'], 100)
+        self.assertEqual(normalized.metadata['frame_image_width'], 200)
+        self.assertEqual(normalized.metadata['frame_image_height'], 100)
 
     def test_normalize_pixel_click_coordinates_from_scaled_model_image(self):
-        from computer_use.devices.command_mapper import (
-            map_action_to_command,
-            normalize_command_coordinates,
-        )
+        from computer_use.devices.command_mapper import map_action_to_command
+        from computer_use.devices.coordinates import normalize_command_coordinates
 
         command = map_action_to_command(
             {
@@ -270,6 +266,31 @@ class DeviceCommandMapperTests(unittest.TestCase):
 
         self.assertEqual(normalized.payload['point'], [200, 100])
         self.assertEqual(normalized.metadata['coordinate_space'], 'pixel')
+
+    def test_normalize_xy_fields_into_point_and_remove_xy(self):
+        from computer_use.devices.command_mapper import map_action_to_command
+        from computer_use.devices.coordinates import normalize_command_coordinates
+
+        command = map_action_to_command(
+            {
+                'action_type': 'click',
+                'action_inputs': {'x': 250, 'y': 500},
+            }
+        )
+
+        normalized = normalize_command_coordinates(
+            command,
+            image_width=200,
+            image_height=100,
+            model_image_width=200,
+            model_image_height=100,
+            coordinate_space='relative',
+            coordinate_scale=1000,
+        )
+
+        self.assertEqual(normalized.payload['point'], [50, 50])
+        self.assertNotIn('x', normalized.payload)
+        self.assertNotIn('y', normalized.payload)
 
 
 class AgentDeviceInjectionTests(unittest.TestCase):

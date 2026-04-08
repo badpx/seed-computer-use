@@ -18,7 +18,8 @@ from .config import config, normalize_coordinate_space, resolve_thinking_setting
 from .action_parser import parse_action
 from .devices import create_device_adapter
 from .devices.base import DeviceAdapter, DeviceCommand, DeviceFrame
-from .devices.command_mapper import map_action_to_command, normalize_command_coordinates
+from .devices.command_mapper import map_action_to_command
+from .devices.coordinates import normalize_command_coordinates
 from .devices.helpers import frame_to_data_url, prepare_model_frame
 from .logging_utils import ContextLogger
 from .prompts import COMPUTER_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
@@ -177,8 +178,6 @@ class ComputerUseAgent:
         self.devices_dir = devices_dir or config.devices_dir
         self.device_config.setdefault('display_index', self.display_index)
         self.device_config.setdefault('natural_scroll', self.natural_scroll)
-        self.device_config.setdefault('coordinate_space', self.coordinate_space)
-        self.device_config.setdefault('coordinate_scale', self.coordinate_scale)
         self.save_context_log = (
             save_context_log if save_context_log is not None else config.save_context_log
         )

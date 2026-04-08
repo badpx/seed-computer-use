@@ -122,8 +122,8 @@ class AgentContextTests(unittest.TestCase):
             )
         ]
 
-        action_executor_stub = types.ModuleType('computer_use.action_executor')
-        action_executor_stub.ActionExecutor = self._build_executor()
+        local_executor_stub = types.ModuleType('computer_use.devices.plugins.local.executor')
+        local_executor_stub.LocalActionExecutor = self._build_executor()
 
         ark_stub = types.ModuleType('volcenginesdkarkruntime')
 
@@ -136,7 +136,7 @@ class AgentContextTests(unittest.TestCase):
         ark_stub.Ark = PlaceholderArk
 
         sys.modules['computer_use.screenshot'] = screenshot_stub
-        sys.modules['computer_use.action_executor'] = action_executor_stub
+        sys.modules['computer_use.devices.plugins.local.executor'] = local_executor_stub
         sys.modules['volcenginesdkarkruntime'] = ark_stub
         sys.modules.pop('computer_use.agent', None)
 
@@ -1024,10 +1024,10 @@ class AgentContextTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertTrue(self.executor_inits)
-        self.assertEqual(self.executor_inits[0]['image_width'], 1280)
-        self.assertEqual(self.executor_inits[0]['image_height'], 720)
-        self.assertEqual(self.executor_inits[0]['model_image_width'], 1280)
-        self.assertEqual(self.executor_inits[0]['model_image_height'], 720)
+        self.assertNotIn('image_width', self.executor_inits[0])
+        self.assertNotIn('image_height', self.executor_inits[0])
+        self.assertNotIn('model_image_width', self.executor_inits[0])
+        self.assertNotIn('model_image_height', self.executor_inits[0])
 
         log_files = list(self.log_dir.glob('task_*.jsonl'))
         records = [

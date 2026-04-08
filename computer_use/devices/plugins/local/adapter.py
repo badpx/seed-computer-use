@@ -9,7 +9,7 @@ import platform
 from typing import Any, Dict, List, Optional
 
 from ...base import DeviceAdapter, DeviceCommand, DeviceFrame
-from ....config import config, normalize_coordinate_space
+from ....config import config
 
 
 class LocalDeviceAdapter(DeviceAdapter):
@@ -18,12 +18,6 @@ class LocalDeviceAdapter(DeviceAdapter):
     def __init__(self, plugin_config: Dict[str, Any]):
         self.plugin_config = dict(plugin_config or {})
         self.verbose = bool(self.plugin_config.get('verbose', True))
-        self.coordinate_space = normalize_coordinate_space(
-            self.plugin_config.get('coordinate_space', config.coordinate_space)
-        )
-        self.coordinate_scale = float(
-            self.plugin_config.get('coordinate_scale', config.coordinate_scale)
-        )
         self.natural_scroll = (
             config.natural_scroll
             if self.plugin_config.get('natural_scroll') is None
@@ -84,25 +78,14 @@ class LocalDeviceAdapter(DeviceAdapter):
 
     def execute_command(self, command: DeviceCommand):
         metadata = dict(command.metadata or {})
-        frame_width = int(metadata.get('image_width') or 0)
-        frame_height = int(metadata.get('image_height') or 0)
-        model_width = int(metadata.get('model_image_width') or frame_width or 0)
-        model_height = int(metadata.get('model_image_height') or frame_height or 0)
-        if frame_width <= 0 or frame_height <= 0:
-            raise ValueError('本地设备执行命令缺少截图尺寸')
-
         source_action_type = str(
             metadata.get('source_action_type') or command.command_type or ''
         ).lower()
-        action_executor_module = importlib.import_module('computer_use.action_executor')
-        ActionExecutor = action_executor_module.ActionExecutor
-        executor = ActionExecutor(
-            image_width=frame_width,
-            image_height=frame_height,
-            model_image_width=model_width,
-            model_image_height=model_height,
-            coordinate_space=metadata.get('coordinate_space', self.coordinate_space),
-            coordinate_scale=metadata.get('coordinate_scale', self.coordinate_scale),
+        local_executor_module = importlib.import_module(
+            'computer_use.devices.plugins.local.executor'
+        )
+        LocalActionExecutor = local_executor_module.LocalActionExecutor
+        executor = LocalActionExecutor(
             verbose=metadata.get('verbose', self.verbose),
             natural_scroll=metadata.get('natural_scroll', self.natural_scroll),
             display_offset_x=int(self.current_display_info.get('x', 0)),
