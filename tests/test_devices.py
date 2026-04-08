@@ -75,6 +75,40 @@ class DeviceHelpersTests(unittest.TestCase):
 
 
 class DeviceRegistryTests(unittest.TestCase):
+    def test_discover_device_plugins_finds_project_root_plugin_by_default(self):
+        from computer_use.devices import registry as registry_module
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_plugins_dir = Path(tmpdir) / 'plugins'
+            plugin_dir = project_plugins_dir / 'demo-root-device'
+            plugin_dir.mkdir(parents=True)
+            (plugin_dir / 'plugin.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'demo-root-device',
+                        'description': 'Demo root device',
+                        'entrypoint': 'plugin:create_adapter',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            (plugin_dir / 'plugin.py').write_text(
+                'def create_adapter(config):\n'
+                '    return {"config": config}\n',
+                encoding='utf-8',
+            )
+
+            with mock.patch.object(
+                registry_module,
+                'project_plugins_dir',
+                return_value=project_plugins_dir,
+                create=True,
+            ):
+                plugins = registry_module.discover_device_plugins()
+
+        self.assertIn('demo-root-device', plugins)
+        self.assertEqual(plugins['demo-root-device'].directory, plugin_dir)
+
     def test_discover_device_plugins_finds_external_plugin(self):
         from computer_use.devices.registry import discover_device_plugins
 
@@ -102,6 +136,58 @@ class DeviceRegistryTests(unittest.TestCase):
         self.assertIn('demo-device', plugins)
         self.assertEqual(plugins['demo-device'].name, 'demo-device')
         self.assertEqual(plugins['demo-device'].entrypoint, 'plugin:create_adapter')
+
+    def test_discover_device_plugins_prefers_devices_dir_over_project_root(self):
+        from computer_use.devices import registry as registry_module
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_plugins_dir = Path(tmpdir) / 'plugins'
+            project_plugin_dir = project_plugins_dir / 'shared-device'
+            project_plugin_dir.mkdir(parents=True)
+            (project_plugin_dir / 'plugin.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'shared-device',
+                        'description': 'Project root plugin',
+                        'entrypoint': 'plugin:create_adapter',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            (project_plugin_dir / 'plugin.py').write_text(
+                'def create_adapter(config):\n'
+                '    return {"source": "project"}\n',
+                encoding='utf-8',
+            )
+
+            external_plugins_dir = Path(tmpdir) / 'custom-devices'
+            external_plugin_dir = external_plugins_dir / 'shared-device'
+            external_plugin_dir.mkdir(parents=True)
+            (external_plugin_dir / 'plugin.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'shared-device',
+                        'description': 'External plugin',
+                        'entrypoint': 'plugin:create_adapter',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            (external_plugin_dir / 'plugin.py').write_text(
+                'def create_adapter(config):\n'
+                '    return {"source": "external"}\n',
+                encoding='utf-8',
+            )
+
+            with mock.patch.object(
+                registry_module,
+                'project_plugins_dir',
+                return_value=project_plugins_dir,
+                create=True,
+            ):
+                plugins = registry_module.discover_device_plugins([str(external_plugins_dir)])
+
+        self.assertEqual(plugins['shared-device'].directory, external_plugin_dir)
 
     def test_create_device_adapter_loads_plugin_and_passes_config(self):
         from computer_use.devices.factory import create_device_adapter
@@ -149,6 +235,65 @@ class DeviceRegistryTests(unittest.TestCase):
                 device_config={'token': 'abc'},
                 devices_dir=tmpdir,
             )
+
+        self.assertEqual(adapter.config, {'token': 'abc'})
+
+    def test_load_plugin_factory_supports_external_plugin_package_imports(self):
+        from computer_use.devices.registry import _load_plugin_spec, load_plugin_factory
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin_dir = Path(tmpdir) / 'external_demo_plugin'
+            plugin_dir.mkdir(parents=True)
+            manifest_path = plugin_dir / 'plugin.json'
+            plugin_path = plugin_dir / 'plugin.py'
+            adapter_path = plugin_dir / 'adapter.py'
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        'name': 'external-demo-plugin',
+                        'description': 'Demo plugin with package imports',
+                        'entrypoint': 'plugin:create_adapter',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            plugin_path.write_text(
+                'from computer_use.devices.plugins.external_demo_plugin.adapter '
+                'import DemoAdapter\n\n'
+                'def create_adapter(config):\n'
+                '    return DemoAdapter(config)\n',
+                encoding='utf-8',
+            )
+            adapter_path.write_text(
+                'from computer_use.devices.base import DeviceAdapter\n\n'
+                'class DemoAdapter(DeviceAdapter):\n'
+                '    def __init__(self, config):\n'
+                '        self.config = dict(config)\n'
+                '    @property\n'
+                '    def device_name(self):\n'
+                '        return "external-demo-plugin"\n'
+                '    def connect(self):\n'
+                '        return None\n'
+                '    def close(self):\n'
+                '        return None\n'
+                '    def capture_frame(self):\n'
+                '        raise NotImplementedError\n'
+                '    def execute_command(self, command):\n'
+                '        raise NotImplementedError\n'
+                '    def get_status(self):\n'
+                '        return {"ok": True}\n'
+                '    def supports_target_selection(self):\n'
+                '        return False\n'
+                '    def list_targets(self):\n'
+                '        return []\n'
+                '    def set_target(self, target_id):\n'
+                '        raise NotImplementedError\n',
+                encoding='utf-8',
+            )
+
+            spec = _load_plugin_spec(manifest_path=manifest_path, plugin_path=plugin_path)
+            factory = load_plugin_factory(spec)
+            adapter = factory({'token': 'abc'})
 
         self.assertEqual(adapter.config, {'token': 'abc'})
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
+import types
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional
 
@@ -14,11 +16,15 @@ def built_in_devices_dir() -> Path:
     return Path(__file__).resolve().parent / 'plugins'
 
 
+def project_plugins_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / 'plugins'
+
+
 def discover_device_plugins(
     search_dirs: Optional[Iterable[str]] = None,
 ) -> Dict[str, DevicePluginSpec]:
     specs: Dict[str, DevicePluginSpec] = {}
-    paths = [built_in_devices_dir()]
+    paths = [built_in_devices_dir(), project_plugins_dir()]
     for directory in search_dirs or ():
         if not directory:
             continue
@@ -40,29 +46,46 @@ def discover_device_plugins(
 
 
 def load_plugin_factory(spec: DevicePluginSpec) -> Callable:
-    module_name = f'computer_use_device_plugin_{spec.name.replace("-", "_")}'
+    package_name = _ensure_plugin_package_namespace(spec)
+    module_name = f'{package_name}.plugin'
     module_spec = importlib.util.spec_from_file_location(module_name, spec.plugin_path)
     if module_spec is None or module_spec.loader is None:
         raise RuntimeError(f'无法加载设备插件模块: {spec.plugin_path}')
     module = importlib.util.module_from_spec(module_spec)
+    sys.modules[module_name] = module
     module_spec.loader.exec_module(module)
 
     module_name_part, _, attr_name = spec.entrypoint.partition(':')
     if module_name_part and module_name_part != 'plugin':
         alt_path = spec.directory / f'{module_name_part}.py'
         alt_spec = importlib.util.spec_from_file_location(
-            f'{module_name}_{module_name_part}',
+            f'{package_name}.{module_name_part}',
             alt_path,
         )
         if alt_spec is None or alt_spec.loader is None:
             raise RuntimeError(f'无法加载设备插件入口模块: {alt_path}')
         module = importlib.util.module_from_spec(alt_spec)
+        sys.modules[f'{package_name}.{module_name_part}'] = module
         alt_spec.loader.exec_module(module)
 
     factory = getattr(module, attr_name or 'create_adapter', None)
     if factory is None or not callable(factory):
         raise RuntimeError(f'设备插件入口不可调用: {spec.entrypoint}')
     return factory
+
+
+def _ensure_plugin_package_namespace(spec: DevicePluginSpec) -> str:
+    package_name = f'computer_use.devices.plugins.{spec.directory.name}'
+    package = sys.modules.get(package_name)
+    if package is None:
+        package = types.ModuleType(package_name)
+        package.__file__ = str(spec.directory / '__init__.py')
+        package.__path__ = [str(spec.directory)]
+        package.__package__ = package_name
+        sys.modules[package_name] = package
+    else:
+        package.__path__ = [str(spec.directory)]
+    return package_name
 
 
 def _load_plugin_spec(
