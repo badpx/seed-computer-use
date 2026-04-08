@@ -71,6 +71,25 @@ class ActionParserCoordinateTests(unittest.TestCase):
         self.assertEqual(parsed['action_type'], 'wait')
         self.assertEqual(parsed['action_inputs']['seconds'], 12.0)
 
+    def test_extract_open_app_action_from_natural_language_response(self):
+        parsed = parse_action(
+            "先打开设置应用。下一步执行 open_app(app_name='com.android.settings')"
+        )
+
+        self.assertEqual(parsed['action_type'], 'open_app')
+        self.assertEqual(
+            parsed['action_inputs']['app_name'],
+            'com.android.settings',
+        )
+
+    def test_extract_press_home_action_from_natural_language_response(self):
+        parsed = parse_action(
+            "当前页面卡住了，先回到桌面 press_home()"
+        )
+
+        self.assertEqual(parsed['action_type'], 'press_home')
+        self.assertEqual(parsed['action_inputs'], {})
+
 
 if __name__ == '__main__':
     unittest.main()

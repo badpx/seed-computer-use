@@ -124,8 +124,10 @@ python -m computer_use "打开浏览器"
 
 - 运行前必须先安装 `adb`，并确保它在 `PATH` 中可用
 - 目标手机需要在启动 Agent 之前就已经连接到电脑
+- 当前仅支持默认 adb 目标，请确保同一时刻只连接一个手机或模拟器
 - 截图来自 `adb exec-out screencap -p`
 - 输入通过 `adb shell input` 发送
+- `open_app(app_name='...')` 中的 `app_name` 当前需要填写 Android package name，例如 `com.android.settings`
 
 ### `.env` 文件示例
 

@@ -650,6 +650,7 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn("press_home()", prompt)
         self.assertIn("open_app(app_name='')", prompt)
         self.assertNotIn("hotkey(key='ctrl c')", prompt)
+        self.assertNotIn('## User Instruction', prompt)
 
     def test_system_prompt_falls_back_to_computer_prompt_for_unknown_profile(self):
         class FakeUnknownProfileDevice:
