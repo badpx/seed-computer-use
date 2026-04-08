@@ -589,6 +589,68 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('- Local weekday: Monday', prompt)
         self.assertNotIn('Approximate location', prompt)
 
+    def test_system_prompt_uses_phone_prompt_for_cellphone_profile(self):
+        class FakeCellphoneDevice:
+            def connect(self):
+                return None
+
+            def close(self):
+                return None
+
+            def capture_frame(self):
+                return self_device_frame
+
+            def execute_command(self, command):
+                return 'DONE'
+
+            def get_status(self):
+                return {
+                    'operating_system': 'Android',
+                    'display_index': 0,
+                    'display_bounds': [0, 0, 1, 1],
+                    'display_is_primary': True,
+                }
+
+            def get_environment_info(self):
+                return {'operating_system': 'Android'}
+
+            def get_prompt_profile(self):
+                return 'cellphone'
+
+            def supports_target_selection(self):
+                return False
+
+            def list_targets(self):
+                return []
+
+            def set_target(self, target_id):
+                raise NotImplementedError
+
+        self_device_frame = self.agent_module.DeviceFrame(
+            image_data_url=(
+                'data:image/png;base64,'
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8'
+                '/w8AAgMBgJ0XGfQAAAAASUVORK5CYII='
+            ),
+            width=1,
+            height=1,
+            metadata={},
+        )
+
+        agent = self._make_agent(device_adapter=FakeCellphoneDevice(), verbose=False)
+        agent._get_runtime_context = lambda: {
+            'timezone': 'Asia/Shanghai (CST), UTC+08:00',
+            'date': '2026-04-06',
+            'weekday': 'Monday',
+            'operating_system': 'Android',
+        }
+
+        prompt = agent._build_system_prompt()
+
+        self.assertIn("press_home()", prompt)
+        self.assertIn("open_app(app_name='')", prompt)
+        self.assertNotIn("hotkey(key='ctrl c')", prompt)
+
     def test_system_prompt_includes_approximate_location_when_available(self):
         agent = self._make_agent(verbose=False)
         agent._get_runtime_context = lambda: {

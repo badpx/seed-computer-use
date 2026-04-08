@@ -22,7 +22,7 @@ from .devices.command_mapper import map_action_to_command
 from .devices.coordinates import normalize_command_coordinates
 from .devices.helpers import frame_to_data_url, prepare_model_frame
 from .logging_utils import ContextLogger
-from .prompts import COMPUTER_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
+from .prompts import COMPUTER_USE_DOUBAO, PHONE_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
 from .skills import Skill, discover_skills, skills_to_tools, load_skill
 
 TOKEN_ESTIMATE_BYTES = 4
@@ -51,6 +51,11 @@ Requirements:
 - Keep both fields concise but specific
 - Output valid JSON only, with no markdown fences or extra text
 '''
+
+PROMPT_PROFILE_TEMPLATES = {
+    'computer': COMPUTER_USE_DOUBAO,
+    'cellphone': PHONE_USE_DOUBAO,
+}
 
 
 class ComputerUseAgent:
@@ -1368,13 +1373,31 @@ class ComputerUseAgent:
 
     def _build_system_prompt(self) -> str:
         """构建稳定的 system prompt。若技能系统启用则追加技能说明。"""
-        prompt = COMPUTER_USE_DOUBAO.format(
+        prompt_template = PROMPT_PROFILE_TEMPLATES.get(
+            self._safe_prompt_profile(),
+            COMPUTER_USE_DOUBAO,
+        )
+        prompt = prompt_template.format(
+            instruction='',
             language=self.language,
         )
         prompt += self._build_runtime_context_prompt()
         if self.skills:
             prompt += SKILLS_PROMPT_ADDENDUM
         return prompt
+
+    def _safe_prompt_profile(self) -> str:
+        """获取设备提示词档位，异常或未知值回退到 computer。"""
+        try:
+            profile = self.device.get_prompt_profile()
+        except Exception:
+            return 'computer'
+
+        if not isinstance(profile, str):
+            return 'computer'
+
+        normalized = profile.strip().lower()
+        return normalized if normalized in PROMPT_PROFILE_TEMPLATES else 'computer'
 
     def _build_runtime_context_prompt(self) -> str:
         """构建注入到 system prompt 的当前运行时上下文。"""

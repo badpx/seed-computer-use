@@ -74,6 +74,29 @@ class DeviceHelpersTests(unittest.TestCase):
         self.assertEqual(extract_frame_base64(frame), JPEG_1X1_BASE64)
 
 
+class DeviceAdapterTests(unittest.TestCase):
+    def test_default_prompt_profile_is_computer(self):
+        from computer_use.devices.base import DeviceAdapter
+
+        class DummyAdapter(DeviceAdapter):
+            def connect(self):
+                return None
+
+            def close(self):
+                return None
+
+            def capture_frame(self):
+                raise NotImplementedError
+
+            def execute_command(self, command):
+                raise NotImplementedError
+
+            def get_status(self):
+                return {}
+
+        self.assertEqual(DummyAdapter().get_prompt_profile(), 'computer')
+
+
 class DeviceRegistryTests(unittest.TestCase):
     def test_discover_device_plugins_finds_project_root_plugin_by_default(self):
         from computer_use.devices import registry as registry_module

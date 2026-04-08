@@ -61,6 +61,10 @@ class DeviceAdapter(ABC):
         """Return stable environment details for prompt injection."""
         return {}
 
+    def get_prompt_profile(self) -> str:
+        """Return the prompt profile used to select the system prompt."""
+        return 'computer'
+
     def supports_target_selection(self) -> bool:
         return False
 
