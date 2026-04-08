@@ -217,6 +217,60 @@ class DeviceCommandMapperTests(unittest.TestCase):
         self.assertEqual(command.command_type, 'click')
         self.assertEqual(command.payload['point'], [120, 55])
 
+    def test_normalize_relative_click_coordinates_to_frame_pixels(self):
+        from computer_use.devices.command_mapper import (
+            map_action_to_command,
+            normalize_command_coordinates,
+        )
+
+        command = map_action_to_command(
+            {
+                'action_type': 'click',
+                'action_inputs': {'point': [250, 500]},
+            }
+        )
+
+        normalized = normalize_command_coordinates(
+            command,
+            image_width=200,
+            image_height=100,
+            model_image_width=200,
+            model_image_height=100,
+            coordinate_space='relative',
+            coordinate_scale=1000,
+        )
+
+        self.assertEqual(normalized.payload['point'], [50, 50])
+        self.assertEqual(normalized.metadata['coordinate_space'], 'pixel')
+        self.assertEqual(normalized.metadata['model_image_width'], 200)
+        self.assertEqual(normalized.metadata['model_image_height'], 100)
+
+    def test_normalize_pixel_click_coordinates_from_scaled_model_image(self):
+        from computer_use.devices.command_mapper import (
+            map_action_to_command,
+            normalize_command_coordinates,
+        )
+
+        command = map_action_to_command(
+            {
+                'action_type': 'click',
+                'action_inputs': {'point': [100, 50]},
+            }
+        )
+
+        normalized = normalize_command_coordinates(
+            command,
+            image_width=200,
+            image_height=100,
+            model_image_width=100,
+            model_image_height=50,
+            coordinate_space='pixel',
+            coordinate_scale=1000,
+        )
+
+        self.assertEqual(normalized.payload['point'], [200, 100])
+        self.assertEqual(normalized.metadata['coordinate_space'], 'pixel')
+
 
 class AgentDeviceInjectionTests(unittest.TestCase):
     def setUp(self):
@@ -270,8 +324,8 @@ class AgentDeviceInjectionTests(unittest.TestCase):
                 test_case.capture_calls += 1
                 return DeviceFrame(
                     image_data_url=f'data:image/png;base64,{PNG_1X1_BASE64}',
-                    width=1,
-                    height=1,
+                    width=200,
+                    height=100,
                     metadata={'device_name': 'fake-remote'},
                 )
 
@@ -315,5 +369,6 @@ class AgentDeviceInjectionTests(unittest.TestCase):
         self.assertEqual(self.capture_calls, 2)
         self.assertEqual(len(self.command_calls), 1)
         self.assertEqual(self.command_calls[0].command_type, 'click')
-        self.assertEqual(self.command_calls[0].payload['point'], [10.0, 20.0])
+        self.assertEqual(self.command_calls[0].payload['point'], [2, 2])
+        self.assertEqual(self.command_calls[0].metadata['coordinate_space'], 'pixel')
         self.assertEqual(agent.device_name, 'fake-remote')

@@ -1026,8 +1026,8 @@ class AgentContextTests(unittest.TestCase):
         self.assertTrue(self.executor_inits)
         self.assertEqual(self.executor_inits[0]['image_width'], 1280)
         self.assertEqual(self.executor_inits[0]['image_height'], 720)
-        self.assertEqual(self.executor_inits[0]['model_image_width'], 512)
-        self.assertEqual(self.executor_inits[0]['model_image_height'], 512)
+        self.assertEqual(self.executor_inits[0]['model_image_width'], 1280)
+        self.assertEqual(self.executor_inits[0]['model_image_height'], 720)
 
         log_files = list(self.log_dir.glob('task_*.jsonl'))
         records = [
