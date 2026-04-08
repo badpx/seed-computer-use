@@ -100,7 +100,7 @@ python -m computer_use "打开浏览器"
 |--------|----------|--------|------|
 | API 密钥 | `ARK_API_KEY` | - | **必需**，火山方舟 API 密钥 |
 | 模型名称 | `ARK_MODEL` | `doubao-seed-1-6-vision-250815` | 使用的模型 |
-| API 地址 | `ARK_BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL |
+| API 地址 | `ARK_BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL（支持方舟Coding Plan） |
 | 温度参数 | `TEMPERATURE` | `0.0` | 模型温度参数 |
 | 思考模式 | `THINKING_MODE` | `auto` | 方舟思考模式，可选 `enabled` / `disabled` / `auto` |
 | 思考档位 | `REASONING_EFFORT` | `medium` | 方舟思考档位，可选 `minimal` / `low` / `medium` / `high` |
@@ -122,8 +122,8 @@ python -m computer_use "打开浏览器"
 ARK_API_KEY=your_api_key_here
 
 # 可选配置
-ARK_MODEL=doubao-seed-1-6-vision-250815
 ARK_BASE_URL=http://ark.cn-beijing.volces.com/api/v3
+ARK_MODEL=doubao-seed-1-6-vision-250815
 TEMPERATURE=0.0
 THINKING_MODE=auto
 REASONING_EFFORT=medium
@@ -141,6 +141,14 @@ NATURAL_SCROLL=
 # 调试日志配置
 SAVE_CONTEXT_LOG=true
 CONTEXT_LOG_DIR=./logs
+```
+
+**注：** 如果订阅了方舟 Coding Plan，`.env` 可采用以下配置：
+
+```bash
+ARK_API_KEY=your_api_key_here
+ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+ARK_MODEL=ark-code-latest
 ```
 
 ### 历史上下文组织
