@@ -1,4 +1,5 @@
 import base64
+import importlib.util
 import unittest
 from unittest.mock import patch
 
@@ -197,16 +198,15 @@ class VncDeviceAdapterCaptureTests(unittest.TestCase):
 
         return VncDeviceAdapter(plugin_config)
 
-    class _FakeImage:
-        size = (1, 1)
-
-        def save(self, buffer, format='PNG'):
-            self.saved_format = format
-            buffer.write(base64.b64decode(PNG_1X1_BASE64))
-
     @patch('computer_use.devices.plugins.vnc.adapter.api')
+    @unittest.skipUnless(
+        importlib.util.find_spec('PIL') is not None,
+        'Pillow is not installed in this environment',
+    )
     def test_capture_frame_returns_png_data_url(self, api_mock):
-        image = self._FakeImage()
+        from PIL import Image
+
+        image = Image.new('RGB', (1, 1), color='white')
         client = unittest.mock.Mock()
         client.captureScreen.return_value = image
         api_mock.connect.return_value = client
