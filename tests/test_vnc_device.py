@@ -60,34 +60,6 @@ class VncDeviceAdapterConfigTests(unittest.TestCase):
             {'operating_system': 'Windows 11'},
         )
 
-    def test_get_status_returns_connection_metadata(self):
-        adapter = self._make_adapter({'host': '127.0.0.1', 'port': 6001})
-
-        self.assertEqual(
-            adapter.get_status(),
-            {
-                'device_name': 'vnc',
-                'connected_via': 'vnc',
-                'host': '127.0.0.1',
-                'port': 6001,
-                'connected': False,
-            },
-        )
-
-        sentinel = object()
-        adapter._client = sentinel
-
-        self.assertEqual(
-            adapter.get_status(),
-            {
-                'device_name': 'vnc',
-                'connected_via': 'vnc',
-                'host': '127.0.0.1',
-                'port': 6001,
-                'connected': True,
-            },
-        )
-
 
 class VncDeviceAdapterFailureTests(unittest.TestCase):
     def _make_adapter(self, plugin_config):
@@ -100,8 +72,8 @@ class VncDeviceAdapterFailureTests(unittest.TestCase):
 
         adapter = self._make_adapter({'host': '127.0.0.1'})
 
-        with self.assertRaisesRegex(ValueError, r'^vnc 不支持命令类型: nope$'):
-            adapter.execute_command(DeviceCommand('nope', {}))
+        with self.assertRaisesRegex(ValueError, r'^vnc 不支持命令类型: swipe$'):
+            adapter.execute_command(DeviceCommand(' SWIPE ', {}))
 
     def test_malformed_coordinate_payload_raises_value_error(self):
         from computer_use.devices.base import DeviceCommand
@@ -109,8 +81,13 @@ class VncDeviceAdapterFailureTests(unittest.TestCase):
         adapter = self._make_adapter({'host': '127.0.0.1'})
         adapter._client = unittest.mock.Mock()
 
-        with self.assertRaisesRegex(ValueError, r'^vnc 坐标格式无效: bad$'):
-            adapter.execute_command(DeviceCommand('click', {'point': 'bad'}))
+        with self.assertRaisesRegex(
+            ValueError, r"^vnc 坐标格式无效: \['bad', 20\]$"
+        ):
+            adapter.execute_command(DeviceCommand('click', {'point': ['bad', 20]}))
+
+        adapter._client.mouseMove.assert_not_called()
+        adapter._client.mousePress.assert_not_called()
 
     def test_status_reports_connection_target_metadata(self):
         adapter = self._make_adapter({'host': '127.0.0.1', 'port': 6001})
@@ -273,14 +250,6 @@ class VncDeviceAdapterMouseCommandTests(unittest.TestCase):
                 unittest.mock.call.mouseUp(1),
             ],
         )
-
-    def test_unsupported_command_raises_clear_value_error(self):
-        from computer_use.devices.base import DeviceCommand
-
-        adapter = self._make_adapter({'host': '127.0.0.1'})
-
-        with self.assertRaisesRegex(ValueError, 'vnc 不支持命令类型: swipe'):
-            adapter.execute_command(DeviceCommand('swipe', {}))
 
     def test_drag_calls_mouseup_when_second_move_fails(self):
         from computer_use.devices.base import DeviceCommand
