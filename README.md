@@ -319,23 +319,6 @@ python -m computer_use "浏览网页" --traditional-scroll
 python -m computer_use "打开记事本" --quiet
 ```
 
-## 支持的操作
-
-| 操作类型 | 说明 | 示例 |
-|----------|------|------|
-| `click` / `left_single` | 左键单击 | `click(point='<point>100 200</point>')` |
-| `left_double` | 左键双击 | `left_double(point='<point>100 200</point>')` |
-| `right_single` | 右键单击 | `right_single(point='<point>100 200</point>')` |
-| `hover` | 鼠标悬停 | `hover(point='<point>100 200</point>')` |
-| `drag` | 拖拽 | `drag(start_point='<point>100 200</point>', end_point='<point>300 400</point>')` |
-| `hotkey` | 热键组合 | `hotkey(key='ctrl c')` |
-| `press` / `keydown` | 按下按键 | `press(key='enter')` |
-| `release` / `keyup` | 释放按键 | `release(key='enter')` |
-| `type` | 输入文本 | `type(content='Hello World')` |
-| `scroll` | 滚动 | `scroll(point='<point>500 500</point>', direction='down')` |
-| `wait` | 等待 | `wait()` |
-| `finished` | 任务完成 | `finished(content='任务完成')` |
-
 ## 注意事项
 
 1. **API 密钥安全** - 不要将 API 密钥提交到版本控制中，使用 `.gitignore` 忽略 `.env` 文件
