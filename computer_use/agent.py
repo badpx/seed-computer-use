@@ -19,7 +19,10 @@ from .action_parser import parse_action
 from .devices import create_device_adapter
 from .devices.base import DeviceAdapter, DeviceCommand, DeviceFrame
 from .devices.command_mapper import map_action_to_command
-from .devices.coordinates import normalize_command_coordinates
+from .devices.coordinates import (
+    normalize_command_coordinates,
+    normalize_scroll_direction,
+)
 from .devices.helpers import frame_to_data_url, prepare_model_frame
 from .logging_utils import ContextLogger
 from .prompts import COMPUTER_USE_DOUBAO, PHONE_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
@@ -56,6 +59,7 @@ PROMPT_PROFILE_TEMPLATES = {
     'computer': COMPUTER_USE_DOUBAO,
     'cellphone': PHONE_USE_DOUBAO,
 }
+USER_INTERRUPT_MESSAGE = 'The current task was interrupted by the user.'
 
 
 class ComputerUseAgent:
@@ -294,6 +298,7 @@ class ComputerUseAgent:
         )
         result['context_log_path'] = self.context_logger.current_log_path
         self._notify_runtime_status()
+        interrupted = False
         
         try:
             # 多轮执行循环
@@ -658,32 +663,37 @@ class ComputerUseAgent:
                 result['error'] = f"达到最大步数限制 ({self.max_steps})"
                 if self.verbose:
                     print(f"\n[警告] 达到最大步数限制")
-        
+        except KeyboardInterrupt:
+            interrupted = True
+            result['error'] = USER_INTERRUPT_MESSAGE
+            self._append_user_interrupt_message_once()
         except Exception as e:
             result['error'] = str(e)
             if self.verbose:
                 print(f"\n[错误] {e}")
                 import traceback
                 traceback.print_exc()
-
-        if result['elapsed_seconds'] is None:
-            result['elapsed_seconds'] = time.perf_counter() - task_start_time
-            result['elapsed_time_text'] = self._format_elapsed_time(
-                result['elapsed_seconds']
+        finally:
+            if result['elapsed_seconds'] is None:
+                result['elapsed_seconds'] = time.perf_counter() - task_start_time
+                result['elapsed_time_text'] = self._format_elapsed_time(
+                    result['elapsed_seconds']
+                )
+            result['runtime_status'] = self._build_runtime_status(
+                elapsed_seconds=result['elapsed_seconds'],
             )
-        result['runtime_status'] = self._build_runtime_status(
-            elapsed_seconds=result['elapsed_seconds'],
-        )
-        self._notify_runtime_status(elapsed_seconds=result['elapsed_seconds'])
+            self._notify_runtime_status(elapsed_seconds=result['elapsed_seconds'])
 
-        self.context_logger.end_task(
-            success=result['success'],
-            final_response=result['final_response'],
-            error=result['error'],
-            elapsed_seconds=result['elapsed_seconds'],
-            elapsed_time_text=result['elapsed_time_text'],
-        )
-        
+            self.context_logger.end_task(
+                success=result['success'],
+                final_response=result['final_response'],
+                error=result['error'],
+                elapsed_seconds=result['elapsed_seconds'],
+                elapsed_time_text=result['elapsed_time_text'],
+            )
+
+        if interrupted:
+            raise KeyboardInterrupt
         return result
 
     def _reset_session_state(self) -> None:
@@ -749,6 +759,20 @@ class ComputerUseAgent:
                 },
             )
         )
+
+    def _append_user_interrupt_message_once(self) -> None:
+        """将用户中断消息加入会话历史，避免连续重复写入。"""
+        if self.session_history:
+            last_item = self.session_history[-1]
+            last_message = last_item.get('api_message') or {}
+            if (
+                last_item.get('kind') == 'user_instruction'
+                and last_message.get('role') == 'user'
+                and last_message.get('content') == USER_INTERRUPT_MESSAGE
+            ):
+                return
+
+        self._append_user_instruction_message(USER_INTERRUPT_MESSAGE)
 
     def _build_persistent_skill_message(
         self,
@@ -1629,7 +1653,7 @@ class ComputerUseAgent:
             payload=dict(base_command.payload or {}),
             metadata=metadata,
         )
-        return normalize_command_coordinates(
+        command = normalize_command_coordinates(
             command,
             image_width=image_width,
             image_height=image_height,
@@ -1637,6 +1661,10 @@ class ComputerUseAgent:
             model_image_height=model_image_height,
             coordinate_space=self.coordinate_space,
             coordinate_scale=self.coordinate_scale,
+        )
+        return normalize_scroll_direction(
+            command,
+            natural_scroll=self.natural_scroll,
         )
 
     def _build_logged_model_response(self, response_obj: Any) -> Dict[str, Any]:

@@ -126,6 +126,10 @@ python -m computer_use "打开浏览器"
 - 运行前必须先安装 `adb`，并确保它的路径已写入环境变量 `PATH`
 - 目标手机需要在启动 Agent 之前就已经连接到电脑
 - 当前仅支持默认 adb 目标，请确保同一时刻只连接一个手机或模拟器
+- `open_app(app_name='...')` 支持一小组内置应用名映射，例如 `醒图`、`微信`、`抖音`、`小红书`、`Chrome`、`设置`
+- 也支持通过 `DEVICE_CONFIG_JSON.app_name_to_package` 追加或覆盖映射；若已知 package name，仍然可以直接传 package name
+- `swipe` 默认会在执行后额外等待 `1.0` 秒，避免下一次截图落在惯性滑动中的中间帧
+- 可通过 `DEVICE_CONFIG_JSON` 私有配置覆盖，例如 `{"swipe_settle_seconds":0.5}`
 
 ### VNC Device
 
@@ -177,6 +181,7 @@ NATURAL_SCROLL=
 # Android ADB 设备示例
 # 需要先安装 adb 并连接好手机后再启动 agent
 # DEVICE_NAME=android_adb
+# DEVICE_CONFIG_JSON={"swipe_settle_seconds":1.0,"app_name_to_package":{"醒图":"com.xt.retouch"}}
 
 # VNC 设备示例
 # 需要先安装 vncdotool，并提供 host / port / password 等配置

@@ -122,6 +122,50 @@ class DeviceHelpersTests(unittest.TestCase):
         self.assertEqual(extract_frame_base64(frame), JPEG_1X1_BASE64)
 
 
+class ScrollNormalizationTests(unittest.TestCase):
+    def test_normalize_scroll_direction_flips_vertical_direction_when_natural_scroll_enabled(self):
+        from computer_use.devices.base import DeviceCommand
+        from computer_use.devices.coordinates import normalize_scroll_direction
+
+        command = DeviceCommand('scroll', {'direction': 'down', 'steps': 50})
+
+        normalized = normalize_scroll_direction(command, natural_scroll=True)
+
+        self.assertEqual(normalized.payload['direction'], 'up')
+        self.assertEqual(normalized.payload['steps'], 50)
+
+    def test_normalize_scroll_direction_flips_horizontal_direction_when_natural_scroll_enabled(self):
+        from computer_use.devices.base import DeviceCommand
+        from computer_use.devices.coordinates import normalize_scroll_direction
+
+        command = DeviceCommand('scroll', {'direction': 'left', 'steps': 30})
+
+        normalized = normalize_scroll_direction(command, natural_scroll=True)
+
+        self.assertEqual(normalized.payload['direction'], 'right')
+
+    def test_normalize_scroll_direction_leaves_non_scroll_commands_unchanged(self):
+        from computer_use.devices.base import DeviceCommand
+        from computer_use.devices.coordinates import normalize_scroll_direction
+
+        command = DeviceCommand('swipe', {'direction': 'down', 'steps': 50})
+
+        normalized = normalize_scroll_direction(command, natural_scroll=True)
+
+        self.assertEqual(normalized.command_type, 'swipe')
+        self.assertEqual(normalized.payload['direction'], 'down')
+
+    def test_normalize_scroll_direction_leaves_scroll_direction_unchanged_when_disabled(self):
+        from computer_use.devices.base import DeviceCommand
+        from computer_use.devices.coordinates import normalize_scroll_direction
+
+        command = DeviceCommand('scroll', {'direction': 'up', 'steps': 12})
+
+        normalized = normalize_scroll_direction(command, natural_scroll=False)
+
+        self.assertEqual(normalized.payload['direction'], 'up')
+
+
 class DeviceAdapterTests(unittest.TestCase):
     def test_default_prompt_profile_is_computer(self):
         from computer_use.devices.base import DeviceAdapter

@@ -102,6 +102,7 @@ class AgentContextTests(unittest.TestCase):
         self.calls = []
         self.exec_outcomes = []
         self.executor_inits = []
+        self.executed_actions = []
         self.capture_index = 0
         self.capture_calls = []
         self.log_dir = Path(self.temp_dir.name) / 'logs'
@@ -222,6 +223,7 @@ class AgentContextTests(unittest.TestCase):
                 test_case.executor_inits.append(kwargs)
 
             def execute(self, action):
+                test_case.executed_actions.append(action)
                 if not test_case.exec_outcomes:
                     return 'executed'
                 outcome = test_case.exec_outcomes.pop(0)
@@ -1003,6 +1005,90 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(user_texts, ['First task', 'Second task'])
         self.assertIn("Thought: first\nAction: finished(content='done-1')", assistant_texts)
 
+    def test_run_records_interrupt_message_and_reraises_keyboard_interrupt(self):
+        self.responses[:] = [
+            "Thought: first step\nAction: wait()",
+        ]
+
+        agent = self._make_agent(persistent_session=True)
+        original_execute = agent.device.execute_command
+
+        def interrupted_execute(command):
+            del command
+            raise KeyboardInterrupt
+
+        agent.device.execute_command = interrupted_execute
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                agent.run('Interrupt task')
+        finally:
+            agent.device.execute_command = original_execute
+
+        user_texts = [
+            item['api_message']['content']
+            for item in agent.session_history
+            if item['api_message']['role'] == 'user'
+            and isinstance(item['api_message'].get('content'), str)
+        ]
+        self.assertEqual(
+            user_texts,
+            ['Interrupt task', self.agent_module.USER_INTERRUPT_MESSAGE],
+        )
+
+    def test_persistent_session_replays_interrupt_message_on_next_run(self):
+        self.responses[:] = [
+            "Thought: first step\nAction: wait()",
+            "Thought: done\nAction: finished(content='done')",
+        ]
+
+        agent = self._make_agent(persistent_session=True)
+        original_execute = agent.device.execute_command
+        call_count = {'count': 0}
+
+        def interrupted_once(command):
+            call_count['count'] += 1
+            if call_count['count'] == 1:
+                raise KeyboardInterrupt
+            return original_execute(command)
+
+        agent.device.execute_command = interrupted_once
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                agent.run('First task')
+            result = agent.run('Second task')
+        finally:
+            agent.device.execute_command = original_execute
+
+        self.assertTrue(result['success'])
+        second_messages = self.calls[1]['messages']
+        user_texts = [
+            message['content']
+            for message in second_messages
+            if message['role'] == 'user' and isinstance(message.get('content'), str)
+        ]
+        self.assertEqual(
+            user_texts,
+            [
+                'First task',
+                self.agent_module.USER_INTERRUPT_MESSAGE,
+                'Second task',
+            ],
+        )
+
+    def test_append_user_interrupt_message_once_avoids_consecutive_duplicates(self):
+        agent = self._make_agent(persistent_session=True)
+
+        agent._append_user_interrupt_message_once()
+        agent._append_user_interrupt_message_once()
+
+        user_texts = [
+            item['api_message']['content']
+            for item in agent.session_history
+            if item['api_message']['role'] == 'user'
+            and isinstance(item['api_message'].get('content'), str)
+        ]
+        self.assertEqual(user_texts, [self.agent_module.USER_INTERRUPT_MESSAGE])
+
     def test_compaction_max_tokens_shrinks_by_recency_bucket(self):
         agent = self._make_agent(persistent_session=True)
 
@@ -1306,7 +1392,7 @@ class AgentContextTests(unittest.TestCase):
         screenshot_ref = model_call['messages'][-1]['content'][0]['image_url']['url']
         self.assertEqual((self.log_dir / screenshot_ref).read_text(encoding='utf-8'), '512x512')
 
-    def test_agent_passes_natural_scroll_override_to_executor(self):
+    def test_agent_flips_scroll_direction_before_local_executor_when_natural_scroll_enabled(self):
         self.responses[:] = [
             "Thought: scroll\nAction: scroll(direction='down', point='<point>500 500</point>')",
             "Thought: done\nAction: finished(content='ok')",
@@ -1314,12 +1400,17 @@ class AgentContextTests(unittest.TestCase):
         self.exec_outcomes[:] = ['scrolled']
 
         agent = self._make_agent(max_steps=2)
-        agent.natural_scroll = False
-        result = agent.run('Use traditional scroll')
+        agent.natural_scroll = True
+        result = agent.run('Use natural scroll')
 
         self.assertTrue(result['success'])
         self.assertTrue(self.executor_inits)
-        self.assertEqual(self.executor_inits[0]['natural_scroll'], False)
+        self.assertNotIn('natural_scroll', self.executor_inits[0])
+        self.assertTrue(self.executed_actions)
+        self.assertEqual(
+            self.executed_actions[0]['action_inputs']['direction'],
+            'up',
+        )
 
     def test_agent_passes_display_index_to_capture_executor_and_logs(self):
         self.responses[:] = [

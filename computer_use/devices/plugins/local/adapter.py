@@ -18,11 +18,6 @@ class LocalDeviceAdapter(DeviceAdapter):
     def __init__(self, plugin_config: Dict[str, Any]):
         self.plugin_config = dict(plugin_config or {})
         self.verbose = bool(self.plugin_config.get('verbose', True))
-        self.natural_scroll = (
-            config.natural_scroll
-            if self.plugin_config.get('natural_scroll') is None
-            else bool(self.plugin_config.get('natural_scroll'))
-        )
         self.display_index = int(
             self.plugin_config.get('display_index', config.display_index)
         )
@@ -87,7 +82,6 @@ class LocalDeviceAdapter(DeviceAdapter):
         LocalActionExecutor = local_executor_module.LocalActionExecutor
         executor = LocalActionExecutor(
             verbose=metadata.get('verbose', self.verbose),
-            natural_scroll=metadata.get('natural_scroll', self.natural_scroll),
             display_offset_x=int(self.current_display_info.get('x', 0)),
             display_offset_y=int(self.current_display_info.get('y', 0)),
         )

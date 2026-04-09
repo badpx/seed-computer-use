@@ -4,7 +4,9 @@ import types
 import unittest
 
 from computer_use.devices.base import DeviceCommand
-from computer_use.devices.coordinates import normalize_command_coordinates
+from computer_use.devices.coordinates import (
+    normalize_command_coordinates,
+)
 
 
 class FakePyAutoGUI(types.ModuleType):
@@ -127,7 +129,7 @@ class LocalActionExecutorTests(unittest.TestCase):
                 self.assertEqual(result, '输入文本(剪贴板): 酒')
 
     def test_scroll_moves_pointer_to_target_and_uses_visible_amount(self):
-        executor = self._make_executor(natural_scroll=False)
+        executor = self._make_executor()
         result = executor.execute(
             {'action_type': 'scroll', 'action_inputs': {'direction': 'down', 'steps': 50, 'point': [498, 558]}}
         )
@@ -150,17 +152,17 @@ class LocalActionExecutorTests(unittest.TestCase):
         self.assertEqual(self.fake_pyautogui.drag_to_calls, [((540, 475), {'duration': 0.5, 'button': 'left'})])
         self.assertEqual(result, '拖拽 (242, 475) -> (540, 475)')
 
-    def test_scroll_respects_natural_scroll_setting(self):
-        executor = self._make_executor(natural_scroll=True)
+    def test_scroll_interprets_direction_literally_after_global_normalization(self):
+        executor = self._make_executor()
         result = executor.execute(
             {'action_type': 'scroll', 'action_inputs': {'direction': 'down', 'steps': 50, 'point': [498, 558]}}
         )
         self.assertEqual(self.fake_pyautogui.move_to_calls, [((498, 558), {})])
-        self.assertEqual(self.fake_pyautogui.scroll_calls, [((-50,), {})])
+        self.assertEqual(self.fake_pyautogui.scroll_calls, [((50,), {})])
         self.assertEqual(result, '滚动down 50步: (498, 558)')
 
     def test_scroll_uses_model_provided_steps(self):
-        executor = self._make_executor(natural_scroll=False)
+        executor = self._make_executor()
         result = executor.execute({'action_type': 'scroll', 'action_inputs': {'direction': 'up', 'steps': 7}})
         self.assertEqual(self.fake_pyautogui.scroll_calls, [((-7,), {})])
         self.assertEqual(result, '滚动up 7步')

@@ -1,5 +1,8 @@
 import base64
+import os
+import sys
 import subprocess
+import types
 import unittest
 from unittest import mock
 
@@ -27,10 +30,10 @@ class AndroidAdbPluginTests(unittest.TestCase):
 
 
 class AndroidAdbDeviceAdapterTests(unittest.TestCase):
-    def _make_adapter(self):
+    def _make_adapter(self, plugin_config=None):
         from computer_use.devices.plugins.android_adb.adapter import AndroidAdbDeviceAdapter
 
-        return AndroidAdbDeviceAdapter({})
+        return AndroidAdbDeviceAdapter(plugin_config or {})
 
     def _completed(self, args, returncode=0, stdout=b'', stderr=b''):
         return subprocess.CompletedProcess(
@@ -102,6 +105,77 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
                 'connected_via': 'adb',
             },
         )
+
+    def test_agent_flips_scroll_direction_for_android_when_natural_scroll_enabled(self):
+        from computer_use.devices.base import DeviceFrame
+
+        class FakeAndroidDevice:
+            device_name = 'android_adb'
+
+            def connect(self):
+                return None
+
+            def close(self):
+                return None
+
+            def capture_frame(self):
+                return DeviceFrame(
+                    image_data_url=f'data:image/png;base64,{PNG_1X1_BASE64}',
+                    width=1,
+                    height=1,
+                    metadata={},
+                )
+
+            def execute_command(self, command):
+                raise AssertionError('device execution should not be reached')
+
+            def get_status(self):
+                return {'device_name': 'android_adb'}
+
+            def get_prompt_profile(self):
+                return 'cellphone'
+
+            def get_environment_info(self):
+                return {'operating_system': 'Android'}
+
+        ark_stub = types.ModuleType('volcenginesdkarkruntime')
+
+        class PlaceholderArk:
+            def __init__(self, *args, **kwargs):
+                self.chat = types.SimpleNamespace(
+                    completions=types.SimpleNamespace(create=lambda **_: None)
+                )
+
+        ark_stub.Ark = PlaceholderArk
+
+        with mock.patch.dict(os.environ, {'ARK_API_KEY': 'test-key'}, clear=False), mock.patch.dict(
+            sys.modules,
+            {'volcenginesdkarkruntime': ark_stub},
+            clear=False,
+        ):
+            from computer_use.agent import ComputerUseAgent
+
+            with mock.patch('computer_use.agent.Ark', return_value=mock.Mock()):
+                agent = ComputerUseAgent(
+                    device_adapter=FakeAndroidDevice(),
+                    device_name='android_adb',
+                    natural_scroll=True,
+                    max_steps=1,
+                    verbose=False,
+                    print_init_status=False,
+                )
+
+        command = agent._build_device_command(
+            {'action_type': 'scroll', 'action_inputs': {'direction': 'down', 'steps': 50}},
+            image_width=1000,
+            image_height=1000,
+            model_image_width=1000,
+            model_image_height=1000,
+        )
+
+        self.assertEqual(command.command_type, 'scroll')
+        self.assertEqual(command.payload['direction'], 'up')
+        self.assertEqual(command.payload['steps'], 50)
 
     def test_click_maps_to_input_tap(self):
         from computer_use.devices.base import DeviceCommand
@@ -185,6 +259,8 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
         )
 
         with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.time.sleep'
+        ) as sleep_mock, mock.patch(
             'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
             return_value=self._completed(
                 [
@@ -207,6 +283,80 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             capture_output=True,
             check=False,
         )
+        sleep_mock.assert_called_once_with(1.0)
+
+    def test_swipe_uses_configured_settle_seconds(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'swipe_settle_seconds': 2.5})
+        command = DeviceCommand(
+            'swipe',
+            {'start_point': [1, 2], 'end_point': [3, 4], 'duration_ms': 900},
+        )
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.time.sleep'
+        ) as sleep_mock, mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                ['adb', 'shell', 'input', 'swipe', '1', '2', '3', '4', '900']
+            ),
+        ):
+            adapter.execute_command(command)
+
+        sleep_mock.assert_called_once_with(2.5)
+
+    def test_swipe_allows_zero_settle_seconds(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'swipe_settle_seconds': 0})
+        command = DeviceCommand(
+            'swipe',
+            {'start_point': [1, 2], 'end_point': [3, 4], 'duration_ms': 900},
+        )
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.time.sleep'
+        ) as sleep_mock, mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                ['adb', 'shell', 'input', 'swipe', '1', '2', '3', '4', '900']
+            ),
+        ):
+            adapter.execute_command(command)
+
+        sleep_mock.assert_called_once_with(0.0)
+
+    def test_invalid_swipe_settle_seconds_raises_clear_error(self):
+        with self.assertRaisesRegex(ValueError, 'swipe_settle_seconds'):
+            self._make_adapter({'swipe_settle_seconds': 'bad'})
+
+        with self.assertRaisesRegex(ValueError, 'swipe_settle_seconds'):
+            self._make_adapter({'swipe_settle_seconds': -1})
+
+    def test_swipe_failure_does_not_wait(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand(
+            'swipe',
+            {'start_point': [1, 2], 'end_point': [3, 4], 'duration_ms': 900},
+        )
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.time.sleep'
+        ) as sleep_mock, mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                ['adb', 'shell', 'input', 'swipe', '1', '2', '3', '4', '900'],
+                returncode=1,
+                stderr=b'gesture failed',
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'android_adb swipe'):
+                adapter.execute_command(command)
+
+        sleep_mock.assert_not_called()
 
     def test_wait_sleeps_for_explicit_seconds_without_adb_call(self):
         from computer_use.devices.base import DeviceCommand
@@ -295,6 +445,33 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             check=False,
         )
 
+    def test_type_text_unicode_failure_raises_clear_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand('type_text', {'content': '中文文本'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                ['adb', 'shell', 'input', 'text', '中文文本'],
+                returncode=255,
+                stderr=(
+                    b"Exception occurred while executing 'text': "
+                    b"java.lang.NullPointerException at sendText"
+                ),
+            ),
+        ) as run_mock:
+            with self.assertRaisesRegex(RuntimeError, 'Unicode|中文'):
+                adapter.execute_command(command)
+
+        run_mock.assert_called_once_with(
+            ['adb', 'shell', 'input', 'text', '中文文本'],
+            capture_output=True,
+            check=False,
+        )
+
+
     def test_open_app_maps_to_monkey_launcher(self):
         from computer_use.devices.base import DeviceCommand
 
@@ -371,6 +548,100 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             capture_output=True,
             check=False,
         )
+
+    def test_open_app_resolves_builtin_app_alias(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand('open_app', {'app_name': '醒图'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'monkey',
+                    '-p',
+                    'com.xt.retouch',
+                    '-c',
+                    'android.intent.category.LAUNCHER',
+                    '1',
+                ]
+            ),
+        ) as run_mock:
+            result = adapter.execute_command(command)
+
+        self.assertEqual(result, 'open_app 执行成功')
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'monkey',
+                '-p',
+                'com.xt.retouch',
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
+    def test_open_app_uses_config_alias_and_overrides_builtin(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter(
+            {'app_name_to_package': {'醒图': 'com.custom.retouch'}}
+        )
+        command = DeviceCommand('open_app', {'app_name': '醒图'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'monkey',
+                    '-p',
+                    'com.custom.retouch',
+                    '-c',
+                    'android.intent.category.LAUNCHER',
+                    '1',
+                ]
+            ),
+        ) as run_mock:
+            adapter.execute_command(command)
+
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'monkey',
+                '-p',
+                'com.custom.retouch',
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
+    def test_open_app_unknown_alias_raises_clear_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+
+        with self.assertRaisesRegex(RuntimeError, 'package|app_name_to_package'):
+            adapter.execute_command(DeviceCommand('open_app', {'app_name': '不存在的应用'}))
+
+    def test_invalid_app_name_to_package_config_raises_clear_error(self):
+        with self.assertRaisesRegex(ValueError, 'app_name_to_package'):
+            self._make_adapter({'app_name_to_package': 'bad'})
+
+        with self.assertRaisesRegex(ValueError, 'app_name_to_package'):
+            self._make_adapter({'app_name_to_package': {'醒图': 123}})
 
     def test_scroll_missing_point_raises_clear_error(self):
         from computer_use.devices.base import DeviceCommand
