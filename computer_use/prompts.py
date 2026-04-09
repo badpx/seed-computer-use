@@ -50,7 +50,7 @@ Action: ...
 click(point='<point>x1 y1</point>')
 long_press(point='<point>x1 y1</point>')
 type(content='') #If you want to submit your input, use "\\n" at the end of `content`.
-drag(start_point='<point>x1 y1</point>', end_point='<point>x2 y2</point>') # Means drag and drop something.
+drag(start_point='<point>x1 y1</point>', end_point='<point>x2 y2</point>') # Used for drag and drop something.
 swipe(start_point='<point>x1 y1</point>', end_point='<point>x2 y2</point>, duration=100-1000) # Caution: the smaller the duration, the slower the swipe speed; the larger the duration, the faster the speed.
 scroll(point='<point>x1 y1</point>', direction='down or up or right or left', steps=5-50) # Avoid reversing up/down scroll direction.
 press_home()
@@ -61,6 +61,7 @@ finished(content='xxx') # Use escape characters \\', \\", and \\n in content par
 
 ## Note
 - Use {language} in `Thought` part.
+- Normalize the x and y coordinates of each point and scale them into the interval [0, 1000].
 - Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
 '''
 
