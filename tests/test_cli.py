@@ -152,6 +152,7 @@ class CliPromptTests(unittest.TestCase):
                 self.run_calls = []
                 self.clear_calls = 0
                 self.compact_calls = 0
+                self.close_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -175,6 +176,9 @@ class CliPromptTests(unittest.TestCase):
             def compact_session_context(self, manual=False):
                 self.compact_calls += 1
                 return True
+
+            def close(self):
+                self.close_calls += 1
 
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
@@ -196,6 +200,7 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertEqual(len(fake_agent_instances), 1)
         self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
         self.assertFalse(fake_agent_instances[0].kwargs['print_init_status'])
         self.assertTrue(fake_agent_instances[0].kwargs['persistent_session'])
         self.assertEqual(
@@ -215,6 +220,7 @@ class CliPromptTests(unittest.TestCase):
                 self.run_calls = []
                 self.clear_calls = 0
                 self.compact_calls = 0
+                self.close_calls = 0
                 self.model = 'fake-model'
                 self.thinking_mode = 'auto'
                 self.reasoning_effort = 'medium'
@@ -239,6 +245,9 @@ class CliPromptTests(unittest.TestCase):
                 self.compact_calls += 1
                 return True
 
+            def close(self):
+                self.close_calls += 1
+
         fake_agent_module = types.ModuleType('computer_use.agent')
         fake_agent_module.ComputerUseAgent = FakeAgent
         sys.modules['computer_use.agent'] = fake_agent_module
@@ -250,6 +259,7 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertEqual(len(fake_agent_instances), 1)
         self.assertEqual(fake_agent_instances[0].run_calls, ['粘贴的一长串指令'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
         self.assertEqual(mock_input.call_count, 2)
 
     def test_interactive_mode_updates_status_bar_after_task(self):

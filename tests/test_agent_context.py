@@ -161,13 +161,10 @@ class AgentContextTests(unittest.TestCase):
             '/w8AAgMBgJ0XGfQAAAAASUVORK5CYII='
         )
 
-        class FakeVncImage:
-            def save(self, fp, format='PNG'):
-                fp.write(png_bytes)
-
         class FakeVncClient:
-            def captureScreen(self):
-                return FakeVncImage()
+            def captureScreen(self, fp, format='PNG'):
+                del format
+                fp.write(png_bytes)
 
             def disconnect(self):
                 return None

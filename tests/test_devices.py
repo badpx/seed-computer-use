@@ -679,6 +679,7 @@ class AgentDeviceInjectionTests(unittest.TestCase):
         self.command_calls = []
         self.capture_calls = 0
         self.connected = False
+        self.closed = False
 
         ark_stub = types.ModuleType('volcenginesdkarkruntime')
 
@@ -714,6 +715,7 @@ class AgentDeviceInjectionTests(unittest.TestCase):
                 test_case.connected = True
 
             def close(self):
+                test_case.closed = True
                 return None
 
             def capture_frame(self):
@@ -768,3 +770,6 @@ class AgentDeviceInjectionTests(unittest.TestCase):
         self.assertEqual(self.command_calls[0].payload['point'], [2, 2])
         self.assertEqual(self.command_calls[0].metadata['coordinate_space'], 'pixel')
         self.assertEqual(agent.device_name, 'fake-remote')
+
+        agent.close()
+        self.assertTrue(self.closed)

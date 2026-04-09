@@ -330,6 +330,17 @@ def _handle_exit_command(context: InteractiveCommandContext, args_text: str) -> 
     print("\n感谢使用，再见！")
 
 
+def _close_agent_quietly(agent: Any) -> None:
+    """尽力关闭 agent 持有的外部资源。"""
+    close = getattr(agent, 'close', None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except Exception:
+        pass
+
+
 def _build_interactive_commands() -> Dict[str, InteractiveCommand]:
     """返回交互模式支持的本地命令。"""
     return {
@@ -597,6 +608,7 @@ def interactive_mode(
         print()
 
     # 初始化代理
+    agent = None
     try:
         agent = ComputerUseAgent(
             model=model,
@@ -638,73 +650,77 @@ def interactive_mode(
         )
         agent.runtime_status_callback = status_bar.update_live_status
     
-    while True:
-        try:
-            # 获取用户输入
-            instruction = _read_instruction(
-                prompt_session,
-                bottom_toolbar=status_bar.render if status_bar is not None else None,
-                completer=command_completer,
-            )
-            
-            if _dispatch_interactive_command(
-                instruction,
-                context=command_context,
-                commands=commands,
-            ):
-                if command_context.should_exit:
-                    break
-                continue
-            
-            # 跳过空输入
-            if not instruction:
-                continue
-            
-            # 执行任务
-            print(f"\n[开始执行] {instruction}")
-            if status_bar is not None:
-                status_bar.start_task()
-            renderer = LiveStatusRenderer(status_bar.render) if status_bar is not None else None
-            if renderer is not None:
-                renderer.start()
+    try:
+        while True:
             try:
-                if renderer is not None and renderer.is_enabled():
-                    proxy = renderer.proxy()
-                    with contextlib.redirect_stdout(proxy), contextlib.redirect_stderr(proxy):
-                        result = agent.run(instruction)
-                else:
-                    result = agent.run(instruction)
-            finally:
+                # 获取用户输入
+                instruction = _read_instruction(
+                    prompt_session,
+                    bottom_toolbar=status_bar.render if status_bar is not None else None,
+                    completer=command_completer,
+                )
+                
+                if _dispatch_interactive_command(
+                    instruction,
+                    context=command_context,
+                    commands=commands,
+                ):
+                    if command_context.should_exit:
+                        break
+                    continue
+                
+                # 跳过空输入
+                if not instruction:
+                    continue
+                
+                # 执行任务
+                print(f"\n[开始执行] {instruction}")
+                if status_bar is not None:
+                    status_bar.start_task()
+                renderer = LiveStatusRenderer(status_bar.render) if status_bar is not None else None
                 if renderer is not None:
-                    renderer.stop()
-            if status_bar is not None:
-                status_bar.finish_task(result)
-            
-            # 显示结果
-            if result['success']:
-                print(
-                    f"\n[执行成功] 共执行 {len(result['steps'])} 步，"
-                    f"总耗时 {result.get('elapsed_time_text', '未知')}"
-                )
-                if result['final_response']:
-                    print(f"[最终回复] {result['final_response']}")
-            else:
-                print(
-                    f"\n[执行失败] {result.get('error', '未知错误')}，"
-                    f"总耗时 {result.get('elapsed_time_text', '未知')}"
-                )
-            
-            print()
-            
-        except KeyboardInterrupt:
-            print("\n\n[中断] 用户取消操作")
-            continue
-        except EOFError:
-            print("\n感谢使用，再见！")
-            break
-        except Exception as e:
-            print(f"\n[错误] {e}")
-            continue
+                    renderer.start()
+                try:
+                    if renderer is not None and renderer.is_enabled():
+                        proxy = renderer.proxy()
+                        with contextlib.redirect_stdout(proxy), contextlib.redirect_stderr(proxy):
+                            result = agent.run(instruction)
+                    else:
+                        result = agent.run(instruction)
+                finally:
+                    if renderer is not None:
+                        renderer.stop()
+                if status_bar is not None:
+                    status_bar.finish_task(result)
+                
+                # 显示结果
+                if result['success']:
+                    print(
+                        f"\n[执行成功] 共执行 {len(result['steps'])} 步，"
+                        f"总耗时 {result.get('elapsed_time_text', '未知')}"
+                    )
+                    if result['final_response']:
+                        print(f"[最终回复] {result['final_response']}")
+                else:
+                    print(
+                        f"\n[执行失败] {result.get('error', '未知错误')}，"
+                        f"总耗时 {result.get('elapsed_time_text', '未知')}"
+                    )
+                
+                print()
+                
+            except KeyboardInterrupt:
+                print("\n\n[中断] 用户取消操作")
+                continue
+            except EOFError:
+                print("\n感谢使用，再见！")
+                break
+            except Exception as e:
+                print(f"\n[错误] {e}")
+                continue
+    finally:
+        if agent is not None:
+            _close_agent_quietly(agent)
 
 
 def single_task_mode(
@@ -789,7 +805,10 @@ def single_task_mode(
     )
 
     # 执行任务
-    result = agent.run(instruction)
+    try:
+        result = agent.run(instruction)
+    finally:
+        _close_agent_quietly(agent)
     
     if verbose:
         print()

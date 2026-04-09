@@ -322,6 +322,22 @@ class VncDeviceAdapterKeyboardCommandTests(unittest.TestCase):
             ],
         )
 
+    def test_hotkey_normalizes_backspace_to_vncdotool_key_name(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        adapter._client = client
+
+        result = adapter.execute_command(
+            DeviceCommand('hotkey', {'key': 'backspace'})
+        )
+
+        self.assertEqual(result, 'hotkey 执行成功')
+        client.keyDown.assert_not_called()
+        client.keyUp.assert_not_called()
+        client.keyPress.assert_called_once_with('bsp')
+
     def test_key_down_and_key_up_forward_single_key(self):
         from computer_use.devices.base import DeviceCommand
 
@@ -339,6 +355,30 @@ class VncDeviceAdapterKeyboardCommandTests(unittest.TestCase):
             [
                 unittest.mock.call.keyDown('a'),
                 unittest.mock.call.keyUp('a'),
+            ],
+        )
+
+    def test_key_down_and_key_up_normalize_backspace_to_vncdotool_key_name(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        adapter._client = client
+
+        down_result = adapter.execute_command(
+            DeviceCommand('key_down', {'key': 'backspace'})
+        )
+        up_result = adapter.execute_command(
+            DeviceCommand('key_up', {'key': 'backspace'})
+        )
+
+        self.assertEqual(down_result, 'key_down 执行成功')
+        self.assertEqual(up_result, 'key_up 执行成功')
+        self.assertEqual(
+            client.method_calls,
+            [
+                unittest.mock.call.keyDown('bsp'),
+                unittest.mock.call.keyUp('bsp'),
             ],
         )
 
@@ -659,6 +699,7 @@ class VncDeviceAdapterConnectionTests(unittest.TestCase):
 
         self.assertIsNone(adapter._client)
         client.disconnect.assert_called_once_with()
+        api_mock.shutdown.assert_called_once_with()
 
 
 class VncDeviceAdapterCaptureTests(unittest.TestCase):
@@ -745,3 +786,4 @@ class VncDeviceAdapterCaptureTests(unittest.TestCase):
 
         self.assertIsNone(adapter._client)
         client.disconnect.assert_called_once_with()
+        api_mock.shutdown.assert_called_once_with()

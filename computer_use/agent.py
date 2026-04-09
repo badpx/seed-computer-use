@@ -708,6 +708,10 @@ class ComputerUseAgent:
         self._set_context_estimated_bytes(0)
         self._notify_runtime_status()
 
+    def close(self) -> None:
+        """释放 agent 持有的底层设备资源。"""
+        self.device.close()
+
     def compact_session_context(self, manual: bool = False) -> bool:
         """压缩当前持久会话的历史上下文。"""
         if not self.persistent_session or self._is_compacting:

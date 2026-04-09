@@ -17,6 +17,20 @@ from ...helpers import detect_image_size
 
 
 class VncDeviceAdapter(DeviceAdapter):
+    _KEY_ALIASES = {
+        'backspace': 'bsp',
+        'cmd': 'meta',
+        'command': 'meta',
+        'control': 'ctrl',
+        'escape': 'esc',
+        'pageup': 'pgup',
+        'pagedown': 'pgdn',
+        'page_up': 'pgup',
+        'page_down': 'pgdn',
+        'return': 'enter',
+        'super': 'super',
+    }
+
     def __init__(self, plugin_config: Dict[str, Any]):
         self.plugin_config = dict(plugin_config or {})
         self.host = str(self.plugin_config.get('host') or '').strip()
@@ -64,14 +78,17 @@ class VncDeviceAdapter(DeviceAdapter):
 
     def close(self) -> None:
         client = self._client
-        if client is None:
-            return None
-
         self._client = None
-        try:
-            client.disconnect()
-        except Exception:
-            pass
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+        if api is not None and hasattr(api, 'shutdown'):
+            try:
+                api.shutdown()
+            except Exception:
+                pass
         return None
 
     def _require_client(self):
@@ -291,7 +308,7 @@ class VncDeviceAdapter(DeviceAdapter):
         keys = [part for part in normalized.split() if part]
         if not keys:
             raise ValueError('vnc hotkey 需要 key')
-        return keys
+        return [VncDeviceAdapter._normalize_key_name(key) for key in keys]
 
     @staticmethod
     def _require_key(payload):
@@ -302,7 +319,14 @@ class VncDeviceAdapter(DeviceAdapter):
         key = str(raw_value).strip().lower()
         if not key:
             raise ValueError('vnc key event 需要 key')
-        return key
+        return VncDeviceAdapter._normalize_key_name(key)
+
+    @classmethod
+    def _normalize_key_name(cls, key):
+        normalized = str(key).strip().lower()
+        if not normalized:
+            return normalized
+        return cls._KEY_ALIASES.get(normalized, normalized)
 
     @staticmethod
     def _scroll_button(direction):
