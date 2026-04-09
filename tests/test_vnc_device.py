@@ -1,5 +1,4 @@
 import base64
-import importlib.util
 import unittest
 from unittest.mock import patch
 
@@ -199,10 +198,6 @@ class VncDeviceAdapterCaptureTests(unittest.TestCase):
         return VncDeviceAdapter(plugin_config)
 
     @patch('computer_use.devices.plugins.vnc.adapter.api')
-    @unittest.skipUnless(
-        importlib.util.find_spec('PIL') is not None,
-        'Pillow is not installed in this environment',
-    )
     def test_capture_frame_returns_png_data_url(self, api_mock):
         from PIL import Image
 
