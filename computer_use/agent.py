@@ -19,7 +19,10 @@ from .action_parser import parse_action
 from .devices import create_device_adapter
 from .devices.base import DeviceAdapter, DeviceCommand, DeviceFrame
 from .devices.command_mapper import map_action_to_command
-from .devices.coordinates import normalize_command_coordinates
+from .devices.coordinates import (
+    normalize_command_coordinates,
+    normalize_scroll_direction,
+)
 from .devices.helpers import frame_to_data_url, prepare_model_frame
 from .logging_utils import ContextLogger
 from .prompts import COMPUTER_USE_DOUBAO, PHONE_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
@@ -1629,7 +1632,7 @@ class ComputerUseAgent:
             payload=dict(base_command.payload or {}),
             metadata=metadata,
         )
-        return normalize_command_coordinates(
+        command = normalize_command_coordinates(
             command,
             image_width=image_width,
             image_height=image_height,
@@ -1637,6 +1640,10 @@ class ComputerUseAgent:
             model_image_height=model_image_height,
             coordinate_space=self.coordinate_space,
             coordinate_scale=self.coordinate_scale,
+        )
+        return normalize_scroll_direction(
+            command,
+            natural_scroll=self.natural_scroll,
         )
 
     def _build_logged_model_response(self, response_obj: Any) -> Dict[str, Any]:

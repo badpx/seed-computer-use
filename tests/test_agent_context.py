@@ -98,6 +98,7 @@ class AgentContextTests(unittest.TestCase):
         self.calls = []
         self.exec_outcomes = []
         self.executor_inits = []
+        self.executed_actions = []
         self.capture_index = 0
         self.capture_calls = []
         self.log_dir = Path(self.temp_dir.name) / 'logs'
@@ -176,6 +177,7 @@ class AgentContextTests(unittest.TestCase):
                 test_case.executor_inits.append(kwargs)
 
             def execute(self, action):
+                test_case.executed_actions.append(action)
                 if not test_case.exec_outcomes:
                     return 'executed'
                 outcome = test_case.exec_outcomes.pop(0)
@@ -1227,7 +1229,7 @@ class AgentContextTests(unittest.TestCase):
         screenshot_ref = model_call['messages'][-1]['content'][0]['image_url']['url']
         self.assertEqual((self.log_dir / screenshot_ref).read_text(encoding='utf-8'), '512x512')
 
-    def test_agent_passes_natural_scroll_override_to_executor(self):
+    def test_agent_flips_scroll_direction_before_local_executor_when_natural_scroll_enabled(self):
         self.responses[:] = [
             "Thought: scroll\nAction: scroll(direction='down', point='<point>500 500</point>')",
             "Thought: done\nAction: finished(content='ok')",
@@ -1235,12 +1237,17 @@ class AgentContextTests(unittest.TestCase):
         self.exec_outcomes[:] = ['scrolled']
 
         agent = self._make_agent(max_steps=2)
-        agent.natural_scroll = False
-        result = agent.run('Use traditional scroll')
+        agent.natural_scroll = True
+        result = agent.run('Use natural scroll')
 
         self.assertTrue(result['success'])
         self.assertTrue(self.executor_inits)
-        self.assertEqual(self.executor_inits[0]['natural_scroll'], False)
+        self.assertNotIn('natural_scroll', self.executor_inits[0])
+        self.assertTrue(self.executed_actions)
+        self.assertEqual(
+            self.executed_actions[0]['action_inputs']['direction'],
+            'up',
+        )
 
     def test_agent_passes_display_index_to_capture_executor_and_logs(self):
         self.responses[:] = [

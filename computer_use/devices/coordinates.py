@@ -53,6 +53,32 @@ def normalize_command_coordinates(
     )
 
 
+def normalize_scroll_direction(
+    command: DeviceCommand,
+    *,
+    natural_scroll: bool,
+) -> DeviceCommand:
+    if command.command_type != 'scroll' or not natural_scroll:
+        return command
+
+    payload = dict(command.payload or {})
+    direction = str(payload.get('direction', '')).strip().lower()
+    opposite_directions = {
+        'up': 'down',
+        'down': 'up',
+        'left': 'right',
+        'right': 'left',
+    }
+    if direction in opposite_directions:
+        payload['direction'] = opposite_directions[direction]
+
+    return DeviceCommand(
+        command_type=command.command_type,
+        payload=payload,
+        metadata=dict(command.metadata or {}),
+    )
+
+
 def _normalize_coordinate_value(
     value: Any,
     *,
@@ -138,4 +164,3 @@ def _parse_coordinate_value(value: Any):
     if isinstance(value, (list, tuple)) and len(value) in {2, 4}:
         return [float(item) for item in value]
     return None
-

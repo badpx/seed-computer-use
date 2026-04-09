@@ -1,5 +1,8 @@
 import base64
+import os
+import sys
 import subprocess
+import types
 import unittest
 from unittest import mock
 
@@ -102,6 +105,77 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
                 'connected_via': 'adb',
             },
         )
+
+    def test_agent_flips_scroll_direction_for_android_when_natural_scroll_enabled(self):
+        from computer_use.devices.base import DeviceFrame
+
+        class FakeAndroidDevice:
+            device_name = 'android_adb'
+
+            def connect(self):
+                return None
+
+            def close(self):
+                return None
+
+            def capture_frame(self):
+                return DeviceFrame(
+                    image_data_url=f'data:image/png;base64,{PNG_1X1_BASE64}',
+                    width=1,
+                    height=1,
+                    metadata={},
+                )
+
+            def execute_command(self, command):
+                raise AssertionError('device execution should not be reached')
+
+            def get_status(self):
+                return {'device_name': 'android_adb'}
+
+            def get_prompt_profile(self):
+                return 'cellphone'
+
+            def get_environment_info(self):
+                return {'operating_system': 'Android'}
+
+        ark_stub = types.ModuleType('volcenginesdkarkruntime')
+
+        class PlaceholderArk:
+            def __init__(self, *args, **kwargs):
+                self.chat = types.SimpleNamespace(
+                    completions=types.SimpleNamespace(create=lambda **_: None)
+                )
+
+        ark_stub.Ark = PlaceholderArk
+
+        with mock.patch.dict(os.environ, {'ARK_API_KEY': 'test-key'}, clear=False), mock.patch.dict(
+            sys.modules,
+            {'volcenginesdkarkruntime': ark_stub},
+            clear=False,
+        ):
+            from computer_use.agent import ComputerUseAgent
+
+            with mock.patch('computer_use.agent.Ark', return_value=mock.Mock()):
+                agent = ComputerUseAgent(
+                    device_adapter=FakeAndroidDevice(),
+                    device_name='android_adb',
+                    natural_scroll=True,
+                    max_steps=1,
+                    verbose=False,
+                    print_init_status=False,
+                )
+
+        command = agent._build_device_command(
+            {'action_type': 'scroll', 'action_inputs': {'direction': 'down', 'steps': 50}},
+            image_width=1000,
+            image_height=1000,
+            model_image_width=1000,
+            model_image_height=1000,
+        )
+
+        self.assertEqual(command.command_type, 'scroll')
+        self.assertEqual(command.payload['direction'], 'up')
+        self.assertEqual(command.payload['steps'], 50)
 
     def test_click_maps_to_input_tap(self):
         from computer_use.devices.base import DeviceCommand

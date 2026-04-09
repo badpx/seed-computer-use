@@ -6,11 +6,9 @@ import ast
 import re
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import pyautogui
-
-from ....config import config
 
 DOUBLE_CLICK_INTERVAL = 0.12
 
@@ -23,15 +21,11 @@ class LocalActionExecutor:
         *,
         verbose: bool = True,
         input_swap: bool = True,
-        natural_scroll: Optional[bool] = None,
         display_offset_x: int = 0,
         display_offset_y: int = 0,
     ):
         self.verbose = verbose
         self.input_swap = input_swap
-        self.natural_scroll = (
-            config.natural_scroll if natural_scroll is None else natural_scroll
-        )
         self.display_offset_x = int(display_offset_x)
         self.display_offset_y = int(display_offset_y)
 
@@ -274,8 +268,6 @@ class LocalActionExecutor:
             abs_x = abs_y = None
 
         amount = steps if direction == 'down' else -steps
-        if self.natural_scroll:
-            amount = -amount
         pyautogui.scroll(amount)
 
         result = f"滚动{direction} {steps}步"
@@ -325,4 +317,3 @@ class LocalActionExecutor:
         if len(content) > 1:
             return True
         return any(ord(char) > 127 for char in content)
-
