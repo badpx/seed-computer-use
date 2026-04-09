@@ -135,9 +135,34 @@ class AgentContextTests(unittest.TestCase):
 
         ark_stub.Ark = PlaceholderArk
 
+        # VNC plugin depends on vncdotool. Stub it so tests can exercise the
+        # prompt-profile integration without installing external dependencies.
+        vncdotool_api_stub = types.ModuleType('vncdotool.api')
+        png_bytes = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8'
+            '/w8AAgMBgJ0XGfQAAAAASUVORK5CYII='
+        )
+
+        class FakeVncImage:
+            def save(self, fp, format='PNG'):
+                fp.write(png_bytes)
+
+        class FakeVncClient:
+            def captureScreen(self):
+                return FakeVncImage()
+
+            def disconnect(self):
+                return None
+
+        vncdotool_api_stub.connect = lambda *args, **kwargs: FakeVncClient()
+        vncdotool_stub = types.ModuleType('vncdotool')
+        vncdotool_stub.api = vncdotool_api_stub
+
         sys.modules['computer_use.screenshot'] = screenshot_stub
         sys.modules['computer_use.devices.plugins.local.executor'] = local_executor_stub
         sys.modules['volcenginesdkarkruntime'] = ark_stub
+        sys.modules['vncdotool'] = vncdotool_stub
+        sys.modules['vncdotool.api'] = vncdotool_api_stub
         sys.modules.pop('computer_use.agent', None)
 
         agent_module = importlib.import_module('computer_use.agent')
@@ -588,6 +613,39 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('- Local date: 2026-04-06', prompt)
         self.assertIn('- Local weekday: Monday', prompt)
         self.assertNotIn('Approximate location', prompt)
+
+    def test_agent_uses_phone_prompt_for_cellphone_device_profile(self):
+        self.responses[:] = [
+            "Thought: done\nAction: finished(content='ok')",
+        ]
+
+        agent = self._make_agent(
+            device_name='vnc',
+            device_config={
+                'host': '127.0.0.1',
+                'port': 5900,
+                'prompt_profile': 'cellphone',
+                'operating_system': 'Android',
+            },
+            verbose=False,
+            print_init_status=False,
+            max_steps=1,
+        )
+        agent._get_runtime_context = lambda: {
+            'timezone': 'Asia/Shanghai (CST), UTC+08:00',
+            'date': '2026-04-06',
+            'weekday': 'Monday',
+            'operating_system': 'Android',
+        }
+
+        result = agent.run('Open something on the phone')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 1)
+        system_prompt = self.calls[0]['messages'][0]['content']
+        self.assertIn("press_home()", system_prompt)
+        self.assertIn("open_app(app_name='')", system_prompt)
+        self.assertNotIn("hotkey(key='ctrl c')", system_prompt)
 
     def test_system_prompt_uses_phone_prompt_for_cellphone_profile(self):
         class FakeCellphoneDevice:
