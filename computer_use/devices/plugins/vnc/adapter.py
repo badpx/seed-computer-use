@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import io
 from typing import Any, Dict
 
 try:
@@ -10,6 +12,7 @@ except ImportError:  # pragma: no cover - exercised via patched tests
     api = None
 
 from ...base import DeviceAdapter, DeviceCommand, DeviceFrame
+from ...helpers import detect_image_size
 
 
 class VncDeviceAdapter(DeviceAdapter):
@@ -78,7 +81,30 @@ class VncDeviceAdapter(DeviceAdapter):
         return self._client
 
     def capture_frame(self) -> DeviceFrame:
-        raise NotImplementedError
+        client = self._require_client()
+        try:
+            image = client.captureScreen()
+        except Exception as exc:
+            raise RuntimeError(f'vnc capture screenshot 失败: {exc}') from exc
+
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        image_bytes = buffer.getvalue()
+        width, height = detect_image_size(image_bytes, mime_type='image/png')
+        return DeviceFrame(
+            image_data_url=(
+                'data:image/png;base64,'
+                + base64.b64encode(image_bytes).decode('utf-8')
+            ),
+            width=width,
+            height=height,
+            metadata={
+                'device_name': self.device_name,
+                'capture_method': 'vncdotool',
+                'host': self.host,
+                'port': self.port,
+            },
+        )
 
     def execute_command(self, command: DeviceCommand):
         raise NotImplementedError

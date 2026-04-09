@@ -1,7 +1,14 @@
+import base64
 import unittest
 from unittest.mock import patch
 
 import computer_use.devices.plugins.vnc.adapter  # noqa: F401
+
+
+PNG_1X1_BASE64 = (
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA'
+    'AAC0lEQVR42mP8/x8AAwMCAO1q2m0AAAAASUVORK5CYII='
+)
 
 
 class VncDeviceAdapterConfigTests(unittest.TestCase):
@@ -182,6 +189,61 @@ class VncDeviceAdapterConnectionTests(unittest.TestCase):
 
         self.assertIsNone(adapter._client)
         client.disconnect.assert_called_once_with()
+
+
+class VncDeviceAdapterCaptureTests(unittest.TestCase):
+    def _make_adapter(self, plugin_config):
+        from computer_use.devices.plugins.vnc.adapter import VncDeviceAdapter
+
+        return VncDeviceAdapter(plugin_config)
+
+    class _FakeImage:
+        size = (1, 1)
+
+        def save(self, buffer, format='PNG'):
+            self.saved_format = format
+            buffer.write(base64.b64decode(PNG_1X1_BASE64))
+
+    @patch('computer_use.devices.plugins.vnc.adapter.api')
+    def test_capture_frame_returns_png_data_url(self, api_mock):
+        image = self._FakeImage()
+        client = unittest.mock.Mock()
+        client.captureScreen.return_value = image
+        api_mock.connect.return_value = client
+        adapter = self._make_adapter(
+            {'host': '10.0.0.8', 'port': 5901, 'password': 'secret'}
+        )
+
+        frame = adapter.capture_frame()
+
+        self.assertTrue(frame.image_data_url.startswith('data:image/png;base64,'))
+        self.assertEqual(frame.width, 1)
+        self.assertEqual(frame.height, 1)
+        self.assertEqual(
+            frame.metadata,
+            {
+                'device_name': 'vnc',
+                'capture_method': 'vncdotool',
+                'host': '10.0.0.8',
+                'port': 5901,
+            },
+        )
+        client.captureScreen.assert_called_once_with()
+        api_mock.connect.assert_called_once_with(
+            '10.0.0.8::5901', password='secret'
+        )
+
+    @patch('computer_use.devices.plugins.vnc.adapter.api')
+    def test_capture_frame_wraps_errors(self, api_mock):
+        client = unittest.mock.Mock()
+        client.captureScreen.side_effect = RuntimeError('boom')
+        api_mock.connect.return_value = client
+        adapter = self._make_adapter({'host': '10.0.0.8', 'port': 5901})
+
+        with self.assertRaisesRegex(RuntimeError, 'vnc capture screenshot 失败'):
+            adapter.capture_frame()
+
+        client.captureScreen.assert_called_once_with()
 
     @patch('computer_use.devices.plugins.vnc.adapter.api')
     def test_close_swallows_disconnect_failure(self, api_mock):
