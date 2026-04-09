@@ -185,6 +185,78 @@ class VncDeviceAdapterMouseCommandTests(unittest.TestCase):
             ],
         )
 
+    def test_click_rejects_invalid_point_payload(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        adapter._client = client
+
+        with self.assertRaisesRegex(ValueError, 'vnc 坐标格式无效'):
+            adapter.execute_command(DeviceCommand('click', {'point': 'bad'}))
+
+        client.mouseMove.assert_not_called()
+        client.mousePress.assert_not_called()
+
+    def test_drag_uses_start_and_end_box_fallbacks(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        adapter._client = client
+
+        result = adapter.execute_command(
+            DeviceCommand(
+                'drag',
+                {'start_box': [11, 22], 'end_box': [33, 44]},
+            )
+        )
+
+        self.assertEqual(result, 'drag 执行成功')
+        self.assertEqual(
+            client.method_calls,
+            [
+                unittest.mock.call.mouseMove(11, 22),
+                unittest.mock.call.mouseDown(1),
+                unittest.mock.call.mouseMove(33, 44),
+                unittest.mock.call.mouseUp(1),
+            ],
+        )
+
+    def test_unsupported_command_raises_clear_value_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+
+        with self.assertRaisesRegex(ValueError, 'vnc 不支持命令类型: scroll'):
+            adapter.execute_command(DeviceCommand('scroll', {}))
+
+    def test_drag_calls_mouseup_when_second_move_fails(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        client.mouseMove.side_effect = [None, RuntimeError('move failed')]
+        adapter._client = client
+
+        with self.assertRaisesRegex(RuntimeError, 'vnc drag 失败: move failed'):
+            adapter.execute_command(
+                DeviceCommand(
+                    'drag',
+                    {'start_point': [10, 20], 'end_point': [30, 40]},
+                )
+            )
+
+        self.assertEqual(
+            client.method_calls,
+            [
+                unittest.mock.call.mouseMove(10, 20),
+                unittest.mock.call.mouseDown(1),
+                unittest.mock.call.mouseMove(30, 40),
+                unittest.mock.call.mouseUp(1),
+            ],
+        )
+
 
 class VncDeviceAdapterConnectionTests(unittest.TestCase):
     def _make_adapter(self, plugin_config):

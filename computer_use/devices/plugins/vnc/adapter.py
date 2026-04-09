@@ -111,57 +111,80 @@ class VncDeviceAdapter(DeviceAdapter):
         payload = dict(command.payload or {})
         command_type = str(command.command_type or '').strip().lower()
 
-        if command_type in {
-            'click',
-            'double_click',
-            'right_click',
-            'move',
-            'drag',
-        }:
-            client = self._require_client()
-
         if command_type == 'click':
-            point = self._require_point(payload, 'point')
-            client.mouseMove(point[0], point[1])
-            client.mousePress(1)
-            return 'click 执行成功'
+            try:
+                client = self._require_client()
+                point = self._require_point(payload, 'point')
+                client.mouseMove(point[0], point[1])
+                client.mousePress(1)
+                return 'click 执行成功'
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f'vnc click 失败: {exc}') from exc
 
         if command_type == 'double_click':
-            point = self._require_point(payload, 'point')
-            client.mouseMove(point[0], point[1])
-            client.mousePress(1)
-            client.mousePress(1)
-            return 'double_click 执行成功'
+            try:
+                client = self._require_client()
+                point = self._require_point(payload, 'point')
+                client.mouseMove(point[0], point[1])
+                client.mousePress(1)
+                client.mousePress(1)
+                return 'double_click 执行成功'
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f'vnc double_click 失败: {exc}') from exc
 
         if command_type == 'right_click':
-            point = self._require_point(payload, 'point')
-            client.mouseMove(point[0], point[1])
-            client.mousePress(3)
-            return 'right_click 执行成功'
+            try:
+                client = self._require_client()
+                point = self._require_point(payload, 'point')
+                client.mouseMove(point[0], point[1])
+                client.mousePress(3)
+                return 'right_click 执行成功'
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f'vnc right_click 失败: {exc}') from exc
 
         if command_type == 'move':
-            point = self._require_point(payload, 'point')
-            client.mouseMove(point[0], point[1])
-            return 'move 执行成功'
+            try:
+                client = self._require_client()
+                point = self._require_point(payload, 'point')
+                client.mouseMove(point[0], point[1])
+                return 'move 执行成功'
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f'vnc move 失败: {exc}') from exc
 
         if command_type == 'drag':
-            start_point = self._require_point(
-                payload,
-                'start_point',
-                fallback_keys=['start_box'],
-            )
-            end_point = self._require_point(
-                payload,
-                'end_point',
-                fallback_keys=['end_box'],
-            )
-            client.mouseMove(start_point[0], start_point[1])
-            client.mouseDown(1)
-            client.mouseMove(end_point[0], end_point[1])
-            client.mouseUp(1)
-            return 'drag 执行成功'
+            try:
+                client = self._require_client()
+                start_point = self._require_point(
+                    payload,
+                    'start_point',
+                    fallback_keys=['start_box'],
+                )
+                end_point = self._require_point(
+                    payload,
+                    'end_point',
+                    fallback_keys=['end_box'],
+                )
+                client.mouseMove(start_point[0], start_point[1])
+                client.mouseDown(1)
+                try:
+                    client.mouseMove(end_point[0], end_point[1])
+                finally:
+                    client.mouseUp(1)
+                return 'drag 执行成功'
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f'vnc drag 失败: {exc}') from exc
 
-        raise NotImplementedError
+        raise ValueError(f'vnc 不支持命令类型: {command_type}')
 
     def _require_point(self, payload, key, fallback_keys=()):
         if key in payload:
