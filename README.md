@@ -122,12 +122,10 @@ python -m computer_use "打开浏览器"
 
 使用 `DEVICE_NAME=android_adb` 可以让 Agent 通过 `adb` 控制已连接的 Android 手机，而不是桌面设备。
 
-- 运行前必须先安装 `adb`，并确保它在 `PATH` 中可用
+- `adb`命令被包含在Android [platform tools](https://developer.android.com/tools/releases/platform-tools?hl=zh-cn)套件，可自行下载
+- 运行前必须先安装 `adb`，并确保它的路径已写入环境变量 `PATH`
 - 目标手机需要在启动 Agent 之前就已经连接到电脑
 - 当前仅支持默认 adb 目标，请确保同一时刻只连接一个手机或模拟器
-- 截图来自 `adb exec-out screencap -p`
-- 输入通过 `adb shell input` 发送
-- `open_app(app_name='...')` 中的 `app_name` 当前需要填写 Android package name，例如 `com.android.settings`
 
 ### `.env` 文件示例
 
