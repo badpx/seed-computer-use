@@ -468,6 +468,23 @@ class VncDeviceAdapterKeyboardCommandTests(unittest.TestCase):
 
         client.keyPress.assert_called_once_with('h')
 
+    def test_type_text_rejects_non_ascii_content_with_clear_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter({'host': '127.0.0.1'})
+        client = unittest.mock.Mock()
+        adapter._client = client
+
+        with self.assertRaisesRegex(
+            ValueError,
+            'vnc type_text 暂不支持非 ASCII 文本输入',
+        ):
+            adapter.execute_command(
+                DeviceCommand('type_text', {'content': '中文文本'})
+            )
+
+        client.keyPress.assert_not_called()
+
     def test_hotkey_releases_only_pressed_modifiers_and_preserves_primary_failure(self):
         from computer_use.devices.base import DeviceCommand
 

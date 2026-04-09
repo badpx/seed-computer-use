@@ -134,6 +134,10 @@ class VncDeviceAdapter(DeviceAdapter):
                 content = str(payload.get('content') or '')
                 if not content:
                     raise ValueError('vnc type_text 需要 content')
+                if not content.isascii():
+                    raise ValueError(
+                        'vnc type_text 暂不支持非 ASCII 文本输入'
+                    )
                 for char in content:
                     client.keyPress(char)
                 return 'type_text 执行成功'
