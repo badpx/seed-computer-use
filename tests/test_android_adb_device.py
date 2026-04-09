@@ -475,6 +475,100 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             check=False,
         )
 
+    def test_open_app_resolves_builtin_app_alias(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand('open_app', {'app_name': '醒图'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'monkey',
+                    '-p',
+                    'com.xt.retouch',
+                    '-c',
+                    'android.intent.category.LAUNCHER',
+                    '1',
+                ]
+            ),
+        ) as run_mock:
+            result = adapter.execute_command(command)
+
+        self.assertEqual(result, 'open_app 执行成功')
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'monkey',
+                '-p',
+                'com.xt.retouch',
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
+    def test_open_app_uses_config_alias_and_overrides_builtin(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter(
+            {'app_name_to_package': {'醒图': 'com.custom.retouch'}}
+        )
+        command = DeviceCommand('open_app', {'app_name': '醒图'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                [
+                    'adb',
+                    'shell',
+                    'monkey',
+                    '-p',
+                    'com.custom.retouch',
+                    '-c',
+                    'android.intent.category.LAUNCHER',
+                    '1',
+                ]
+            ),
+        ) as run_mock:
+            adapter.execute_command(command)
+
+        run_mock.assert_called_once_with(
+            [
+                'adb',
+                'shell',
+                'monkey',
+                '-p',
+                'com.custom.retouch',
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+            ],
+            capture_output=True,
+            check=False,
+        )
+
+    def test_open_app_unknown_alias_raises_clear_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+
+        with self.assertRaisesRegex(RuntimeError, 'package|app_name_to_package'):
+            adapter.execute_command(DeviceCommand('open_app', {'app_name': '不存在的应用'}))
+
+    def test_invalid_app_name_to_package_config_raises_clear_error(self):
+        with self.assertRaisesRegex(ValueError, 'app_name_to_package'):
+            self._make_adapter({'app_name_to_package': 'bad'})
+
+        with self.assertRaisesRegex(ValueError, 'app_name_to_package'):
+            self._make_adapter({'app_name_to_package': {'醒图': 123}})
+
     def test_scroll_missing_point_raises_clear_error(self):
         from computer_use.devices.base import DeviceCommand
 
