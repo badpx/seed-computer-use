@@ -926,6 +926,90 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(user_texts, ['First task', 'Second task'])
         self.assertIn("Thought: first\nAction: finished(content='done-1')", assistant_texts)
 
+    def test_run_records_interrupt_message_and_reraises_keyboard_interrupt(self):
+        self.responses[:] = [
+            "Thought: first step\nAction: wait()",
+        ]
+
+        agent = self._make_agent(persistent_session=True)
+        original_execute = agent.device.execute_command
+
+        def interrupted_execute(command):
+            del command
+            raise KeyboardInterrupt
+
+        agent.device.execute_command = interrupted_execute
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                agent.run('Interrupt task')
+        finally:
+            agent.device.execute_command = original_execute
+
+        user_texts = [
+            item['api_message']['content']
+            for item in agent.session_history
+            if item['api_message']['role'] == 'user'
+            and isinstance(item['api_message'].get('content'), str)
+        ]
+        self.assertEqual(
+            user_texts,
+            ['Interrupt task', self.agent_module.USER_INTERRUPT_MESSAGE],
+        )
+
+    def test_persistent_session_replays_interrupt_message_on_next_run(self):
+        self.responses[:] = [
+            "Thought: first step\nAction: wait()",
+            "Thought: done\nAction: finished(content='done')",
+        ]
+
+        agent = self._make_agent(persistent_session=True)
+        original_execute = agent.device.execute_command
+        call_count = {'count': 0}
+
+        def interrupted_once(command):
+            call_count['count'] += 1
+            if call_count['count'] == 1:
+                raise KeyboardInterrupt
+            return original_execute(command)
+
+        agent.device.execute_command = interrupted_once
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                agent.run('First task')
+            result = agent.run('Second task')
+        finally:
+            agent.device.execute_command = original_execute
+
+        self.assertTrue(result['success'])
+        second_messages = self.calls[1]['messages']
+        user_texts = [
+            message['content']
+            for message in second_messages
+            if message['role'] == 'user' and isinstance(message.get('content'), str)
+        ]
+        self.assertEqual(
+            user_texts,
+            [
+                'First task',
+                self.agent_module.USER_INTERRUPT_MESSAGE,
+                'Second task',
+            ],
+        )
+
+    def test_append_user_interrupt_message_once_avoids_consecutive_duplicates(self):
+        agent = self._make_agent(persistent_session=True)
+
+        agent._append_user_interrupt_message_once()
+        agent._append_user_interrupt_message_once()
+
+        user_texts = [
+            item['api_message']['content']
+            for item in agent.session_history
+            if item['api_message']['role'] == 'user'
+            and isinstance(item['api_message'].get('content'), str)
+        ]
+        self.assertEqual(user_texts, [self.agent_module.USER_INTERRUPT_MESSAGE])
+
     def test_compaction_max_tokens_shrinks_by_recency_bucket(self):
         agent = self._make_agent(persistent_session=True)
 

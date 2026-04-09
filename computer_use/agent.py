@@ -59,6 +59,7 @@ PROMPT_PROFILE_TEMPLATES = {
     'computer': COMPUTER_USE_DOUBAO,
     'cellphone': PHONE_USE_DOUBAO,
 }
+USER_INTERRUPT_MESSAGE = 'The current task was interrupted by the user.'
 
 
 class ComputerUseAgent:
@@ -297,6 +298,7 @@ class ComputerUseAgent:
         )
         result['context_log_path'] = self.context_logger.current_log_path
         self._notify_runtime_status()
+        interrupted = False
         
         try:
             # 多轮执行循环
@@ -661,32 +663,37 @@ class ComputerUseAgent:
                 result['error'] = f"达到最大步数限制 ({self.max_steps})"
                 if self.verbose:
                     print(f"\n[警告] 达到最大步数限制")
-        
+        except KeyboardInterrupt:
+            interrupted = True
+            result['error'] = USER_INTERRUPT_MESSAGE
+            self._append_user_interrupt_message_once()
         except Exception as e:
             result['error'] = str(e)
             if self.verbose:
                 print(f"\n[错误] {e}")
                 import traceback
                 traceback.print_exc()
-
-        if result['elapsed_seconds'] is None:
-            result['elapsed_seconds'] = time.perf_counter() - task_start_time
-            result['elapsed_time_text'] = self._format_elapsed_time(
-                result['elapsed_seconds']
+        finally:
+            if result['elapsed_seconds'] is None:
+                result['elapsed_seconds'] = time.perf_counter() - task_start_time
+                result['elapsed_time_text'] = self._format_elapsed_time(
+                    result['elapsed_seconds']
+                )
+            result['runtime_status'] = self._build_runtime_status(
+                elapsed_seconds=result['elapsed_seconds'],
             )
-        result['runtime_status'] = self._build_runtime_status(
-            elapsed_seconds=result['elapsed_seconds'],
-        )
-        self._notify_runtime_status(elapsed_seconds=result['elapsed_seconds'])
+            self._notify_runtime_status(elapsed_seconds=result['elapsed_seconds'])
 
-        self.context_logger.end_task(
-            success=result['success'],
-            final_response=result['final_response'],
-            error=result['error'],
-            elapsed_seconds=result['elapsed_seconds'],
-            elapsed_time_text=result['elapsed_time_text'],
-        )
-        
+            self.context_logger.end_task(
+                success=result['success'],
+                final_response=result['final_response'],
+                error=result['error'],
+                elapsed_seconds=result['elapsed_seconds'],
+                elapsed_time_text=result['elapsed_time_text'],
+            )
+
+        if interrupted:
+            raise KeyboardInterrupt
         return result
 
     def _reset_session_state(self) -> None:
@@ -752,6 +759,20 @@ class ComputerUseAgent:
                 },
             )
         )
+
+    def _append_user_interrupt_message_once(self) -> None:
+        """将用户中断消息加入会话历史，避免连续重复写入。"""
+        if self.session_history:
+            last_item = self.session_history[-1]
+            last_message = last_item.get('api_message') or {}
+            if (
+                last_item.get('kind') == 'user_instruction'
+                and last_message.get('role') == 'user'
+                and last_message.get('content') == USER_INTERRUPT_MESSAGE
+            ):
+                return
+
+        self._append_user_instruction_message(USER_INTERRUPT_MESSAGE)
 
     def _build_persistent_skill_message(
         self,
