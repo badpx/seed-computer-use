@@ -295,6 +295,33 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             check=False,
         )
 
+    def test_type_text_unicode_failure_raises_clear_error(self):
+        from computer_use.devices.base import DeviceCommand
+
+        adapter = self._make_adapter()
+        command = DeviceCommand('type_text', {'content': '中文文本'})
+
+        with mock.patch(
+            'computer_use.devices.plugins.android_adb.adapter.subprocess.run',
+            return_value=self._completed(
+                ['adb', 'shell', 'input', 'text', '中文文本'],
+                returncode=255,
+                stderr=(
+                    b"Exception occurred while executing 'text': "
+                    b"java.lang.NullPointerException at sendText"
+                ),
+            ),
+        ) as run_mock:
+            with self.assertRaisesRegex(RuntimeError, 'Unicode|中文'):
+                adapter.execute_command(command)
+
+        run_mock.assert_called_once_with(
+            ['adb', 'shell', 'input', 'text', '中文文本'],
+            capture_output=True,
+            check=False,
+        )
+
+
     def test_open_app_maps_to_monkey_launcher(self):
         from computer_use.devices.base import DeviceCommand
 

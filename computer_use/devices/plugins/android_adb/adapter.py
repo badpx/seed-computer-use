@@ -221,10 +221,18 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
         results: List[str] = []
 
         if content:
-            self._run_adb(
-                ['shell', 'input', 'text', self._escape_text(content)],
-                action_label='type_text',
-            )
+            try:
+                self._run_adb(
+                    ['shell', 'input', 'text', self._escape_text(content)],
+                    action_label='type_text',
+                )
+            except RuntimeError as exc:
+                if self._contains_non_ascii(content):
+                    raise RuntimeError(
+                        'android_adb type_text 不支持当前非 ASCII 文本输入；'
+                        '当前设备上的 `adb shell input text` 无法稳定输入中文等 Unicode 内容'
+                    ) from exc
+                raise
             results.append('type_text 执行成功')
 
         if has_trailing_newline:
@@ -342,6 +350,9 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
 
     def _escape_text(self, value: str) -> str:
         return value.replace('%', '%25').replace(' ', '%s')
+
+    def _contains_non_ascii(self, value: str) -> bool:
+        return any(ord(char) > 127 for char in value)
 
     def _safe_preview(self, data: bytes, limit: int = 80) -> str:
         if not data:
