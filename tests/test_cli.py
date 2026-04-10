@@ -1011,6 +1011,76 @@ class CliPromptTests(unittest.TestCase):
         non_command = types.SimpleNamespace(text_before_cursor='打开计算器')
         self.assertEqual(list(completer.get_completions(non_command, None)), [])
 
+    def test_status_bar_shows_spinner_when_running(self):
+        status_bar = self.cli.InteractiveStatusBar(
+            model='fake-model',
+            thinking_mode='enabled',
+            reasoning_effort='high',
+            total_skills=3,
+        )
+
+        # 空闲状态显示静态图标
+        idle_render = status_bar.render()
+        self.assertIn('🧠 fake-model high', idle_render)
+
+        # 开始任务后显示 spinner
+        status_bar.start_task()
+        running_render = status_bar.render()
+        self.assertNotIn('🧠', running_render)
+        self.assertIn('fake-model high', running_render)
+        # 第一帧是 ⠋
+        self.assertTrue(running_render.startswith('⠋ '))
+
+    def test_status_bar_spinner_cycles_through_frames(self):
+        status_bar = self.cli.InteractiveStatusBar(
+            model='fake-model',
+            thinking_mode='enabled',
+            reasoning_effort='high',
+            total_skills=3,
+        )
+        status_bar.start_task()
+
+        frames = []
+        for _ in range(12):
+            frames.append(status_bar.render()[0])
+            status_bar.advance_spinner()
+
+        # 验证帧循环：前10帧是完整的动画序列，第11帧回到第一帧
+        expected_frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        self.assertEqual(frames[:10], list(expected_frames))
+        self.assertEqual(frames[10], '⠋')  # 循环回到第一帧
+
+    def test_status_bar_resets_spinner_on_start_task(self):
+        status_bar = self.cli.InteractiveStatusBar(
+            model='fake-model',
+            thinking_mode='enabled',
+            reasoning_effort='high',
+            total_skills=3,
+        )
+        status_bar.start_task()
+        status_bar.advance_spinner()
+        status_bar.advance_spinner()
+        # 此时帧索引应该在 2
+
+        # 重新开始任务应该重置到第一帧
+        status_bar.start_task()
+        render = status_bar.render()
+        self.assertTrue(render.startswith('⠋ '))
+
+    def test_status_bar_shows_static_icon_after_finish_task(self):
+        status_bar = self.cli.InteractiveStatusBar(
+            model='fake-model',
+            thinking_mode='enabled',
+            reasoning_effort='high',
+            total_skills=3,
+        )
+        status_bar.start_task()
+        status_bar.advance_spinner()
+
+        status_bar.finish_task({'success': True, 'steps': []})
+        render = status_bar.render()
+        self.assertIn('🧠 fake-model high', render)
+
 
 if __name__ == '__main__':
     unittest.main()
