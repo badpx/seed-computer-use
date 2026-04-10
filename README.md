@@ -1,36 +1,15 @@
 # Computer Use Tool
 
-基于火山方舟模型的本地 GUI 自动化工具。
+基于火山方舟模型的 GUI 自动化工具。默认可直接操控本地桌面，也支持通过设备插件连接 Android 手机、VNC 远程桌面等其他环境。
 
-## 功能特性
+## 你可以先这样用
 
-- 🤖 **多轮自动执行** - 自动循环执行直到任务完成
-- 🖱️ **丰富操作支持** - 点击、输入、滚动、拖拽、热键等
-- 📸 **截图保存** - 支持开关配置，便于调试
-- 🧾 **上下文日志** - 保存每轮模型输入与执行结果，便于回放调试
-- ⚙️ **灵活配置** - 支持环境变量和配置文件
-- 💻 **CLI 交互** - 支持交互式和单次任务模式
-
-## 环境要求
-
-- **操作系统**: macOS / Windows / Linux
-- **Python**: 3.8 - 3.13
-- **网络**: 可访问火山方舟 API
-
-> 目前不建议使用 Python 3.14+。
-> `volcengine-python-sdk[ark]` 依赖 `pydantic.v1` 兼容层，而该兼容层在 Python 3.14+ 上会触发兼容性告警，且不保证可正常工作。
-
-## 快速开始
-
-### 1. 创建虚拟环境
+### 1. 创建虚拟环境并安装依赖
 
 ```bash
-# 创建虚拟环境
 python3.13 -m venv venv
-
-# 激活虚拟环境
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate   # Windows
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 如果你的机器默认 `python` 已经是 3.13，也可以使用：
@@ -39,30 +18,61 @@ source venv/bin/activate  # macOS/Linux
 python -m venv venv
 ```
 
-### 2. 安装依赖
+### 2. 配置 API 密钥
 
-```bash
-pip install -r requirements.txt
-```
-
-### 3. 配置 API 密钥
-
-#### 方式一：环境变量（推荐）
+方式一：环境变量
 
 ```bash
 export ARK_API_KEY="your_api_key_here"
 ```
 
-#### 方式二：配置文件
+方式二：配置文件
 
 ```bash
 cp .env.example .env
 # 编辑 .env 文件，填入你的 API 密钥
 ```
 
+### 3. 检查运行环境
+
+```bash
+python check_env.py
+```
+
 ### 4. 运行
 
-#### 交互模式
+交互模式：
+
+```bash
+python -m computer_use
+```
+
+单次任务：
+
+```bash
+python -m computer_use "打开浏览器"
+```
+
+## 核心能力
+
+- 多轮自动执行，直到任务完成或达到步数上限
+- 支持点击、输入、滚动、拖拽、热键等常见 GUI 动作
+- 支持交互模式和单次任务模式
+- 支持 JSONL 上下文日志，便于调试和回放
+- 支持设备插件，可切换本地桌面、Android、VNC 等不同控制目标
+
+## 环境要求
+
+- 操作系统：macOS / Windows / Linux
+- Python：3.8 - 3.13
+- 网络：可访问火山方舟 API
+
+> 目前不建议使用 Python 3.14+。
+> `volcengine-python-sdk[ark]` 依赖 `pydantic.v1` 兼容层，而该兼容层在 Python 3.14+ 上会触发兼容性告警，且不保证可正常工作。
+
+## 最常用的运行方式
+
+### 交互模式
 
 ```bash
 python -m computer_use
@@ -74,249 +84,27 @@ python -m computer_use
 - 左右键编辑当前输入
 - 直接粘贴长文本
 - 历史记录持久化到 `~/.computer_use_history`
-- 输入 slash 命令并自动补齐命令名，例如 `/status`、`/display`、`/clear`、`/compact`、`/exit`
+- slash 命令自动补齐，例如 `/status`、`/display`、`/clear`、`/compact`、`/exit`
 
 如果运行环境中缺少 `prompt_toolkit`，CLI 会自动回退到基础 `input()` 模式。
 
-#### 单次任务
+### 单次任务模式
 
 ```bash
 python -m computer_use "打开浏览器"
 ```
 
-## 配置说明
-
-### 配置优先级
-
-配置加载遵循以下优先级（从高到低）：
-
-1. **环境变量** - 最高优先级
-2. **配置文件** (`.env`) - 中等优先级
-3. **代码默认值** - 最低优先级
-
-### 配置项
-
-| 配置项 | 环境变量 | 默认值 | 说明 |
-|--------|----------|--------|------|
-| API 密钥 | `ARK_API_KEY` | - | **必需**，火山方舟 API 密钥 |
-| 模型名称 | `ARK_MODEL` | `doubao-seed-1-6-vision-250815` | 使用的模型 |
-| API 地址 | `ARK_BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL（支持方舟Coding Plan） |
-| 温度参数 | `TEMPERATURE` | `0.0` | 模型温度参数 |
-| 思考模式 | `THINKING_MODE` | `auto` | 方舟思考模式，可选 `enabled` / `disabled` / `auto` |
-| 思考档位 | `REASONING_EFFORT` | `medium` | 方舟思考档位，可选 `minimal` / `low` / `medium` / `high` |
-| 坐标空间 | `COORDINATE_SPACE` | `relative` | 坐标空间，可选 `relative` / `pixel` |
-| 坐标量程 | `COORDINATE_SCALE` | `1000` | `relative` 坐标的量程，例如 `1` / `100` / `1000` |
-| 设备插件 | `DEVICE_NAME` | `local` | 设备适配器名称，默认使用内置本地真机插件 |
-| 设备配置 | `DEVICE_CONFIG_JSON` | - | 设备插件私有 JSON 配置，原样透传给插件 |
-| 设备目录 | `DEVICES_DIR` | `./devices` | 外部设备插件目录 |
-| 目标显示器 | `DISPLAY_INDEX` | `0` | 截图和动作执行所使用的显示器编号，`0` 表示主显示器 |
-| 模型截图尺寸 | `SCREENSHOT_SIZE` | - | 传给模型前的截图宽高，仅支持相同宽高值，例如 `1024` 表示缩放为 `1024x1024` |
-| 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中最多保留的截图数量，包含当前轮 |
-| 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将成功执行结果注入多轮上下文；失败反馈始终会注入 |
-| 最大步数 | `MAX_STEPS` | `100` | 最大执行步数 |
-| 自然滚动 | `NATURAL_SCROLL` | 自动检测 | 是否按系统自然滚动方向解释 scroll 偏移 |
-| 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
-| 日志目录 | `CONTEXT_LOG_DIR` | `./logs` | 上下文日志保存目录 |
-
-### Android ADB Device
-
-使用 `DEVICE_NAME=android_adb` 可以让 Agent 通过 `adb` 控制已连接的 Android 手机，而不是桌面设备。
-
-- `adb`命令被包含在Android [platform tools](https://developer.android.com/tools/releases/platform-tools?hl=zh-cn)套件，可自行下载
-- 运行前必须先安装 `adb`，并确保它的路径已写入环境变量 `PATH`
-- 目标手机需要在启动 Agent 之前就已经连接到电脑
-- 当前仅支持默认 adb 目标，请确保同一时刻只连接一个手机或模拟器
-- `open_app(app_name='...')` 支持一小组内置应用名映射，例如 `醒图`、`微信`、`抖音`、`小红书`、`Chrome`、`设置`
-- 也支持通过 `DEVICE_CONFIG_JSON.app_name_to_package` 追加或覆盖映射；若已知 package name，仍然可以直接传 package name
-- `swipe` 默认会在执行后额外等待 `1.0` 秒，避免下一次截图落在惯性滑动中的中间帧
-- 可通过 `DEVICE_CONFIG_JSON` 私有配置覆盖，例如 `{"swipe_settle_seconds":0.5}`
-
-### VNC Device
-
-使用 `DEVICE_NAME=vnc` 可以让 Agent 通过 `vncdotool` 连接远程 VNC 设备。
-
-- 运行前需要安装 `vncdotool`，并确保 `pip install -r requirements.txt` 已完成
-- 设备私有配置至少需要 `host`，可选 `port`、`password`、`prompt_profile`、`operating_system`
-- `prompt_profile` 默认为 `computer`，也可以通过 `DEVICE_CONFIG_JSON` 透传为 `cellphone`
-- `scroll(left/right)` 会尝试发送 VNC 扩展滚轮按钮 `6/7`，是否生效取决于远端 VNC 服务端和目标系统
-
-示例：
+### 常见示例
 
 ```bash
-python -m computer_use "打开远程浏览器" \
-  --device vnc \
-  --device-config-json '{"host":"127.0.0.1","port":5900,"password":"secret"}'
-
-python -m computer_use "打开手机浏览器" \
-  --device vnc \
-  --device-config-json '{"host":"127.0.0.1","port":5901,"prompt_profile":"cellphone","operating_system":"Android"}'
-```
-
-### `.env` 文件示例
-
-```bash
-# 必需配置
-ARK_API_KEY=your_api_key_here
-
-# 可选配置
-ARK_BASE_URL=http://ark.cn-beijing.volces.com/api/v3
-ARK_MODEL=doubao-seed-1-6-vision-250815
-TEMPERATURE=0.0
-THINKING_MODE=auto
-REASONING_EFFORT=medium
-COORDINATE_SPACE=relative
-COORDINATE_SCALE=1000
-DEVICE_NAME=local
-DEVICE_CONFIG_JSON=
-DEVICES_DIR=./devices
-DISPLAY_INDEX=0
-SCREENSHOT_SIZE=
-MAX_CONTEXT_SCREENSHOTS=5
-INCLUDE_EXECUTION_FEEDBACK=false
-MAX_STEPS=100
-
-# 滚动方向；留空时自动检测系统设置
-NATURAL_SCROLL=
-
-# Android ADB 设备示例
-# 需要先安装 adb 并连接好手机后再启动 agent
-# DEVICE_NAME=android_adb
-# DEVICE_CONFIG_JSON={"swipe_settle_seconds":1.0,"app_name_to_package":{"醒图":"com.xt.retouch"}}
-
-# VNC 设备示例
-# 需要先安装 vncdotool，并提供 host / port / password 等配置
-# DEVICE_NAME=vnc
-# DEVICE_CONFIG_JSON={"host":"127.0.0.1","port":5900,"password":"secret"}
-
-# 调试日志配置
-SAVE_CONTEXT_LOG=true
-CONTEXT_LOG_DIR=./logs
-```
-
-**注：** 如果订阅了方舟 Coding Plan，`.env` 可采用以下配置：
-
-```bash
-ARK_API_KEY=your_api_key_here
-ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
-ARK_MODEL=ark-code-latest
-```
-
-### 设备适配器插件
-
-当前 Agent 已经把“截图 + 设备输入”抽象为统一设备接口：
-
-- 默认内置 `local` 设备插件，继续操作本地真机
-- 可以通过实现新的设备插件，对接远程桌面、sandbox 或其他云端机器
-- 插件通过目录扫描发现，内置插件在 `computer_use/devices/plugins/`，工程根目录下的 `./plugins/` 会自动扫描，额外外部插件目录由 `DEVICES_DIR` 指定
-- 设备插件私有配置通过 `DEVICE_CONFIG_JSON` 或 `--device-config-json` 以 JSON 对象传入
-- 插件私有能力和接入方式建议写在各自目录下的 `README.md` 中，避免顶层文档耦合内部插件细节
-
-第一版设备插件要求返回结构化截图帧，而不是直接返回本地 `PIL.Image`：
-
-- `image_data_url`
-- `width`
-- `height`
-- `metadata`
-
-当前核心层要求 `image_data_url` 为完整 data URL，至少支持 `image/png` 和 `image/jpeg`，并默认保留插件返回的原始格式。
-
-### 历史上下文组织
-
-每一轮调用方舟模型时，代理会发送：
-
-- 单独一份 system 提示词
-- 会话历史中的用户指令消息
-- 会话历史中的 assistant 历史响应
-- 已展开并持久生效的 skill 指令消息
-- 最近 `N` 张截图对应的图片消息，默认最多 5 张，包含当前轮
-- 历史执行反馈文本（失败反馈始终保留，成功反馈可选）
-
-上下文裁剪规则：
-
-- 文本消息默认全部保留，包括用户指令、assistant 响应、skill 指令和执行反馈
-- 图片消息只保留最近 `MAX_CONTEXT_SCREENSHOTS` 张，包含当前截图
-- 成功执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启；失败反馈会始终注入，帮助模型纠正动作
-- 当估算上下文占用超过窗口的 90% 时，会按用户指令 turn 自动压缩旧历史：把旧的 `user / assistant / feedback` 总结成更短的 `user + assistant` pair，并丢弃旧截图
-
-历史截图优先保存在限长内存队列中，不依赖本地截图文件回放。传 `--verbose` 时，工具会把传给模型的截图保存到 `CONTEXT_LOG_DIR/screenshots/`，并在 JSONL 日志中以相对路径引用这些图片，而不是内联 base64 数据，方便调试和回放。
-
-如果设置了 `SCREENSHOT_SIZE` 或 `--screenshot-size`，工具会先把屏幕截图强制缩放为 `NxN` 再传给模型。目前仅支持宽高相同的正方形尺寸。启用后，`pixel` 坐标会按“模型图尺寸 -> 真实屏幕尺寸”自动换算，避免点击偏移。
-
-如果当前设备插件支持目标切换，并且设置了 `DISPLAY_INDEX` 或 `--display-index`，工具会只截取该目标的画面，并将模型输出的局部坐标自动换算到设备执行所需的坐标系后再执行点击、拖拽和滚动。内置 `local` 设备插件会把它解释为显示器编号；交互模式下还可以通过 `/display <index>` 运行时切换目标显示器。
-
-交互模式下：
-
-- 可通过 `/status` 查看本次会话真正生效的参数
-- 可通过 `/display <index>` 切换当前交互会话的目标显示器，并持久化到项目 `.env`
-- 可通过 `/clear` 清空当前交互会话的多轮上下文历史
-- 可通过 `/compact` 手动压缩当前交互会话的旧历史文本上下文
-- 多条用户输入会持续追加到同一会话历史中，而不是按输入重置上下文
-- skill 一旦在当前交互会话中展开，会转成普通用户消息持久保留并持续生效
-- 传 `--verbose` 时，额外打印 `[配置信息]`，用于展示基础环境和调试相关配置
-
-## CLI 参数
-
-```
-python -m computer_use [指令] [选项]
-```
-
-### 位置参数
-
-| 参数 | 说明 |
-|------|------|
-| `instruction` | 任务指令（可选，不提供则进入交互模式） |
-
-### 可选参数
-
-| 参数 | 简写 | 说明 |
-|------|------|------|
-| `--model` | `-m` | 指定模型名称 |
-| `--max-steps` | `-s` | 指定最大执行步数 |
-| `--thinking <mode>` | `-t` | 设置方舟思考模式，取值 `enabled` / `disabled` / `auto` |
-| `--reasoning-effort <level>` | `-r` | 设置方舟思考档位，取值 `minimal` / `low` / `medium` / `high` |
-| `--coordinate-space <space>` | - | 设置坐标空间，取值 `relative` / `pixel` |
-| `--coordinate-scale <value>` | - | 设置 `relative` 坐标量程，例如 `1` / `100` / `1000` |
-| `--device <name>` | - | 设置设备插件名称，例如 `local`、`android_adb`、`vnc` |
-| `--device-config-json <json>` | - | 设置设备插件私有 JSON 配置 |
-| `--devices-dir <path>` | - | 设置外部设备插件目录 |
-| `--display-index <index>` | - | 设置目标显示器编号，`0` 表示主显示器 |
-| `--screenshot-size <value>` | - | 设置传给模型的截图宽高，仅支持正方形，例如 `1024` 表示 `1024x1024` |
-| `--max-context-screenshots <count>` | - | 设置多轮上下文中保留的截图数量，包含当前轮 |
-| `--include-execution-feedback` | - | 启用成功执行反馈注入 |
-| `--no-execution-feedback` | - | 禁用成功执行反馈注入 |
-| `--verbose` | - | 在上下文日志中记录完整 `messages`，并将截图保存到 `CONTEXT_LOG_DIR/screenshots/` |
-| `--natural-scroll` | - | 显式启用自然滚动 |
-| `--traditional-scroll` | - | 显式启用传统滚动 |
-| `--quiet` | `-q` | 安静模式，减少输出 |
-| `--version` | `-v` | 显示版本信息 |
-| `--help` | `-h` | 显示帮助信息 |
-
-### 使用示例
-
-```bash
-# 交互模式
-python -m computer_use
-
-# 单次任务
-python -m computer_use "打开浏览器"
-
 # 指定模型
 python -m computer_use "打开微信" --model doubao-seed-1-6-vision-250815
-
-# 指定第 2 台显示器作为目标屏幕
-python -m computer_use "打开微信" --display-index 1
-
-# 指定设备插件
-python -m computer_use "打开浏览器" --device local
-
-# 指定外部设备插件及其 JSON 配置
-python -m computer_use "打开浏览器" --device remote-sandbox --device-config-json '{"sandbox_id":"sbx-1"}'
 
 # 指定最大步数
 python -m computer_use "搜索 Python 教程" --max-steps 10
 
-# 保留最近 3 张截图上下文
-python -m computer_use "分析页面状态" --max-context-screenshots 3
+# 指定第 2 台显示器作为目标屏幕（仅对支持目标切换的设备生效）
+python -m computer_use "打开微信" --display-index 1
 
 # 将传给模型的截图缩放为 1024x1024
 python -m computer_use "分析页面状态" --screenshot-size 1024
@@ -326,75 +114,194 @@ python -m computer_use "打开浏览器" --no-execution-feedback
 
 # 在上下文日志中记录完整 messages
 python -m computer_use "分析页面状态" --verbose
-
-# 显式启用思考模式
-python -m computer_use "分析这个页面并给出下一步操作" --thinking enabled
-
-# 使用短参数并禁用思考
-python -m computer_use "打开浏览器" -t disabled
-
-# 设置低档位思考
-python -m computer_use "总结这个页面" -t enabled -r low
-
-# Kimi [0,1] 坐标输出
-python -m computer_use "点击按钮" --coordinate-space relative --coordinate-scale 1
-
-# 原生像素坐标输出
-python -m computer_use "点击按钮" --coordinate-space pixel
-
-# 强制使用传统滚动
-python -m computer_use "浏览网页" --traditional-scroll
-
-# 安静模式
-python -m computer_use "打开记事本" --quiet
 ```
 
-## 注意事项
+## 配置方式
 
-1. **API 密钥安全** - 不要将 API 密钥提交到版本控制中，使用 `.gitignore` 忽略 `.env` 文件
+配置优先级如下：
 
-2. **屏幕分辨率** - 工具会根据截图自动适配屏幕分辨率，请确保截图时屏幕分辨率稳定
+1. 环境变量
+2. 配置文件 `.env`
+3. 代码默认值
 
-3. **操作安全** - 工具会实际控制鼠标和键盘，请确保在安全的测试环境中使用
+### 常用配置项
 
-4. **网络连接** - 需要稳定的网络连接到火山方舟 API
+| 配置项 | 环境变量 | 默认值 | 说明 |
+|--------|----------|--------|------|
+| API 密钥 | `ARK_API_KEY` | - | 必需，火山方舟 API 密钥 |
+| 模型名称 | `ARK_MODEL` | `doubao-seed-1-6-vision-250815` | 使用的模型 |
+| API 地址 | `ARK_BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL |
+| 设备插件 | `DEVICE_NAME` | `local` | 当前设备适配器 |
+| 设备配置 | `DEVICE_CONFIG_JSON` | - | 设备插件私有 JSON 配置 |
+| 目标显示器 | `DISPLAY_INDEX` | `0` | 仅对支持目标切换的设备生效；`local` 会把它解释为显示器编号 |
+| 模型截图尺寸 | `SCREENSHOT_SIZE` | - | 传给模型前的截图宽高，仅支持正方形 |
+| 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中保留的截图数量，包含当前轮 |
+| 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将成功执行结果注入上下文；失败反馈始终会注入 |
+| 最大步数 | `MAX_STEPS` | `100` | 最大执行步数 |
+| 自然滚动 | `NATURAL_SCROLL` | 自动检测 | 是否按系统自然滚动方向解释 `scroll` 动作 |
+| 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
+| 日志目录 | `CONTEXT_LOG_DIR` | `./logs` | 上下文日志保存目录 |
 
-5. **依赖安装** - 某些系统可能需要额外安装依赖，如 Linux 系统可能需要 `scrot` 用于截图
+### `.env` 示例
 
-## 故障排除
+```bash
+ARK_API_KEY=your_api_key_here
+
+ARK_BASE_URL=http://ark.cn-beijing.volces.com/api/v3
+ARK_MODEL=doubao-seed-1-6-vision-250815
+DEVICE_NAME=local
+DEVICE_CONFIG_JSON=
+DEVICES_DIR=./devices
+DISPLAY_INDEX=0
+SCREENSHOT_SIZE=
+MAX_CONTEXT_SCREENSHOTS=5
+INCLUDE_EXECUTION_FEEDBACK=false
+MAX_STEPS=100
+NATURAL_SCROLL=
+SAVE_CONTEXT_LOG=true
+CONTEXT_LOG_DIR=./logs
+```
+
+如果订阅了方舟 Coding Plan，可使用：
+
+```bash
+ARK_API_KEY=your_api_key_here
+ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+ARK_MODEL=ark-code-latest
+```
+
+## 设备插件
+
+### `local`
+
+默认设备插件，直接操作当前本地桌面环境。适合大多数桌面自动化场景。
+
+### `android_adb`
+
+通过 `adb` 控制已连接的 Android 设备。
+
+- 运行前需要先安装 Android platform tools，并确保 `adb` 在 `PATH` 中
+- 启动 Agent 前就要先连接好手机
+- 当前只支持默认 adb 目标，请确保同一时刻只连接一个手机或模拟器
+
+详细说明见 [computer_use/devices/plugins/android_adb/README.md](computer_use/devices/plugins/android_adb/README.md)。
+
+### `vnc`
+
+通过 `vncdotool` 控制远程 VNC 设备。
+
+- 运行前需要先安装项目依赖中的 `vncdotool`
+- 设备私有配置至少需要 `host`
+- `prompt_profile` 默认是 `computer`，也可以切换成 `cellphone`
+
+详细说明见 [computer_use/devices/plugins/vnc/README.md](computer_use/devices/plugins/vnc/README.md)。
+
+### 插件发现规则
+
+- 内置插件目录：`computer_use/devices/plugins/`
+- 工程根目录插件目录：`./plugins/`
+- 额外外部插件目录：由 `DEVICES_DIR` 指定
+
+设备插件私有配置会通过 `DEVICE_CONFIG_JSON` 或 `--device-config-json` 原样传入插件。
+
+## 进阶使用
+
+### 多轮上下文与截图窗口
+
+如果你需要了解多轮上下文如何组织、截图如何裁剪、成功反馈和失败反馈如何注入历史，请看单独文档：
+
+- [docs/context-history.md](docs/context-history.md)
+
+### 交互模式命令
+
+- `/status`：查看当前生效参数
+- `/display <index>`：切换目标显示器或目标设备索引，仅对支持目标切换的设备生效
+- `/clear`：清空当前交互会话的多轮历史
+- `/compact`：手动压缩当前旧历史文本上下文
+- `/exit`：退出交互模式
+
+### CLI 参数
+
+```bash
+python -m computer_use [指令] [选项]
+```
+
+| 参数 | 简写 | 说明 |
+|------|------|------|
+| `--model` | `-m` | 指定模型名称 |
+| `--max-steps` | `-s` | 指定最大执行步数 |
+| `--thinking <mode>` | `-t` | 设置思考模式，取值 `enabled` / `disabled` / `auto` |
+| `--reasoning-effort <level>` | `-r` | 设置思考档位，取值 `minimal` / `low` / `medium` / `high` |
+| `--coordinate-space <space>` | - | 设置坐标空间，取值 `relative` / `pixel` |
+| `--coordinate-scale <value>` | - | 设置 `relative` 坐标量程，例如 `1` / `100` / `1000` |
+| `--device <name>` | - | 设置设备插件名称，例如 `local`、`android_adb`、`vnc` |
+| `--device-config-json <json>` | - | 设置设备插件私有 JSON 配置 |
+| `--devices-dir <path>` | - | 设置外部设备插件目录 |
+| `--display-index <index>` | - | 设置目标显示器编号，或其他支持 target selection 的设备目标编号 |
+| `--screenshot-size <value>` | - | 设置传给模型的截图宽高，仅支持正方形 |
+| `--max-context-screenshots <count>` | - | 设置多轮上下文中保留的截图数量 |
+| `--include-execution-feedback` | - | 启用成功执行反馈注入 |
+| `--no-execution-feedback` | - | 禁用成功执行反馈注入 |
+| `--verbose` | - | 在上下文日志中记录完整 `messages`，并保存截图 |
+| `--natural-scroll` | - | 显式启用自然滚动 |
+| `--traditional-scroll` | - | 显式启用传统滚动 |
+| `--quiet` | `-q` | 安静模式，减少输出 |
+| `--version` | `-v` | 显示版本信息 |
+| `--help` | `-h` | 显示帮助信息 |
+
+## 调试与排障
+
+### 上下文日志
+
+如果开启 `SAVE_CONTEXT_LOG=true`，每个任务会生成 JSONL 日志，便于调试模型输入、设备状态和执行结果。
+
+传 `--verbose` 时，还会额外：
+
+- 记录完整 `messages`
+- 将传给模型的截图保存到 `CONTEXT_LOG_DIR/screenshots/`
 
 ### 常见问题
 
-**Q: 运行时出现 `Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater` 告警怎么办？**
-A: 这是 `volcengine-python-sdk[ark]` 依赖链触发的兼容性告警，不是本项目自己的逻辑问题。请改用 Python 3.13 或更低版本重新创建虚拟环境，例如：
+**Q: 启动时提示缺少 API 密钥？**  
+A: 请设置 `ARK_API_KEY` 环境变量或创建 `.env` 文件。
+
+**Q: 模型调用失败？**  
+A: 请检查网络连接、API 密钥和模型名称。
+
+**Q: 截图失败？**  
+A: 请检查屏幕权限设置，某些系统需要授权才能截图。
+
+**Q: 鼠标/键盘操作无效？**  
+A: 请检查是否有其他应用占用了输入控制权，或当前设备插件是否支持该动作。
+
+**Q: Python 3.14+ 运行时报 `Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater`？**  
+A: 这是 `volcengine-python-sdk[ark]` 依赖链触发的兼容性告警。请改用 Python 3.13 或更低版本重新创建虚拟环境。
+
+## 面向开发者
+
+### 项目结构
+
+- `computer_use/agent.py`：主循环，负责截图、模型调用、动作解析和执行
+- `computer_use/cli.py`：交互模式与单次任务模式入口
+- `computer_use/config.py`：配置加载与持久化
+- `computer_use/devices/`：设备插件体系
+- `computer_use/devices/plugins/`：内置设备插件
+- `computer_use/prompts.py`：桌面与手机 system prompt 模板
+- `tests/`：`unittest` 测试
+- `skills/`：内置技能定义
+
+### 测试与开发
 
 ```bash
-rm -rf venv
-python3.13 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python check_env.py
+python -m unittest discover tests
+python -m unittest tests.test_action_parser
 ```
 
-**Q: 启动时提示缺少 API 密钥**
-A: 请设置 `ARK_API_KEY` 环境变量或创建 `.env` 文件
+### 贡献
 
-**Q: 模型调用失败**
-A: 请检查网络连接和 API 密钥是否正确，以及模型名称是否有效
-
-**Q: 截图失败**
-A: 请检查屏幕权限设置，某些系统需要授权才能截图
-
-**Q: 鼠标/键盘操作无效**
-A: 请检查是否有其他应用占用了输入控制权
+欢迎提交 Issue 和 Pull Request。请不要提交 `.env`、API key、截图文件或 JSONL 调试日志。
 
 ## 许可证
 
 MIT License
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 联系方式
-
-如有问题或建议，请通过 GitHub Issues 联系我们。
