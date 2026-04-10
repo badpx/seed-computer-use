@@ -33,6 +33,8 @@ def _parse_device_config_json(raw_json: str) -> Dict[str, Any]:
 class InteractiveStatusBar:
     """交互模式输入栏底部状态栏。"""
 
+    _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
     def __init__(
         self,
         model: str,
@@ -49,12 +51,18 @@ class InteractiveStatusBar:
         self.status_note = ''
         self.completed_elapsed_seconds = 0.0
         self.current_task_started_at: Optional[float] = None
+        self.is_running = False
+        self._spinner_index = 0
 
     def render(self) -> str:
         """渲染底部状态栏文本。"""
         context_icon = '🪫' if self.context_percent >= CONTEXT_WARNING_PERCENT else '🔋'
+        if self.is_running:
+            prefix = f"{self._SPINNER_FRAMES[self._spinner_index]} {self.model} {self.reasoning_effort}"
+        else:
+            prefix = f"🧠 {self.model} {self.reasoning_effort}"
         parts = [
-            f"🧠 {self.model} {self.reasoning_effort} | "
+            f"{prefix} | "
             f"{context_icon} {self.context_percent}% | "
             f"🛠️ {self.active_skills}/{self.total_skills} | "
             f"⏱️ {self._format_elapsed_time(self._current_total_elapsed_seconds())}"
@@ -87,6 +95,8 @@ class InteractiveStatusBar:
         self.context_percent = 0
         self.active_skills = 0
         self.status_note = ''
+        self.is_running = True
+        self._spinner_index = 0
 
     def finish_task(self, result: Dict[str, Any]) -> None:
         """根据任务结果收尾状态栏。"""
@@ -104,6 +114,7 @@ class InteractiveStatusBar:
 
         self.completed_elapsed_seconds += elapsed
         self.current_task_started_at = None
+        self.is_running = False
 
     def _current_total_elapsed_seconds(self) -> float:
         """返回当前应展示的累计耗时。"""
@@ -128,6 +139,10 @@ class InteractiveStatusBar:
         if hours <= 0:
             return f'{total_minutes}m'
         return f'{hours}h{minutes:02d}m'
+
+    def advance_spinner(self) -> None:
+        """推进 spinner 动画帧索引。"""
+        self._spinner_index = (self._spinner_index + 1) % len(self._SPINNER_FRAMES)
 
 
 class LiveStatusStreamProxy:
