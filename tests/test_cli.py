@@ -314,13 +314,13 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(len(fake_agent_instances), 1)
         first_toolbar = fake_session.prompts[0]['bottom_toolbar']
         second_toolbar = fake_session.prompts[1]['bottom_toolbar']
-        self.assertIn('fake-model high', first_toolbar)
+        self.assertIn('🧠 fake-model high', first_toolbar)
         self.assertIn('Context: 0%', first_toolbar)
         self.assertIn('Skills: 0/3', first_toolbar)
-        self.assertIn('Duration: 00:00:00', first_toolbar)
+        self.assertIn('🕤 0m', first_toolbar)
         self.assertIn('Context: 6%', second_toolbar)
         self.assertIn('Skills: 1/3', second_toolbar)
-        self.assertIn('Duration: 00:00:12', second_toolbar)
+        self.assertIn('🕤 0m', second_toolbar)
 
     def test_status_bar_renders_runtime_status_note_at_the_end(self):
         status_bar = self.cli.InteractiveStatusBar(
@@ -342,6 +342,20 @@ class CliPromptTests(unittest.TestCase):
         self.assertIn('Context: 86%', rendered)
         self.assertIn('Skills: 1/3', rendered)
         self.assertTrue(rendered.endswith(' | Auto compact soon'))
+
+    def test_status_bar_formats_duration_in_minutes_or_hours(self):
+        status_bar = self.cli.InteractiveStatusBar(
+            model='fake-model',
+            thinking_mode='enabled',
+            reasoning_effort='high',
+            total_skills=3,
+        )
+
+        self.assertEqual(status_bar._format_elapsed_time(59), '0m')
+        self.assertEqual(status_bar._format_elapsed_time(60), '1m')
+        self.assertEqual(status_bar._format_elapsed_time(3599), '59m')
+        self.assertEqual(status_bar._format_elapsed_time(3600), '1h00m')
+        self.assertEqual(status_bar._format_elapsed_time(7260), '2h01m')
 
     def test_interactive_mode_exits_on_ctrl_d_with_prompt_toolkit(self):
         fake_agent_instances = []

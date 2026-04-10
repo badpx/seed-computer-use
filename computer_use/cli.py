@@ -53,10 +53,10 @@ class InteractiveStatusBar:
     def render(self) -> str:
         """渲染底部状态栏文本。"""
         parts = [
-            f"{self.model} {self.reasoning_effort} | "
+            f"🧠 {self.model} {self.reasoning_effort} | "
             f"Context: {self.context_percent}% | "
             f"Skills: {self.active_skills}/{self.total_skills} | "
-            f"Duration: {self._format_elapsed_time(self._current_total_elapsed_seconds())}"
+            f"🕤 {self._format_elapsed_time(self._current_total_elapsed_seconds())}"
         ]
         if self.status_note:
             parts.append(f" | {self.status_note}")
@@ -120,11 +120,13 @@ class InteractiveStatusBar:
         return max(0, min(100, percent))
 
     def _format_elapsed_time(self, elapsed_seconds: float) -> str:
-        """将累计耗时格式化为 HH:MM:SS。"""
+        """将累计耗时格式化为分钟展示。"""
         total_seconds = max(0, int(elapsed_seconds))
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
+        total_minutes = total_seconds // 60
+        hours, minutes = divmod(total_minutes, 60)
+        if hours <= 0:
+            return f'{total_minutes}m'
+        return f'{hours}h{minutes:02d}m'
 
 
 class LiveStatusStreamProxy:
