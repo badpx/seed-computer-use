@@ -246,7 +246,7 @@ class LiveStatusRenderer:
 
     def _render_status_locked(self) -> None:
         self.stream.write('\r\033[2K')
-        self.stream.write(self.status_provider())
+        self.stream.write(self.status_provider.render())
         self._status_visible = True
 
     def _clear_status_locked(self) -> None:
@@ -697,7 +697,7 @@ def interactive_mode(
                 print(f"\n[开始执行] {instruction}")
                 if status_bar is not None:
                     status_bar.start_task()
-                renderer = LiveStatusRenderer(status_bar.render) if status_bar is not None else None
+                renderer = LiveStatusRenderer(status_bar) if status_bar is not None else None
                 if renderer is not None:
                     renderer.start()
                 try:
