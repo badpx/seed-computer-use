@@ -730,6 +730,8 @@ def interactive_mode(
                 print()
                 
             except KeyboardInterrupt:
+                if status_bar is not None:
+                    status_bar.is_running = False
                 print("\n\n[中断] 用户取消操作")
                 continue
             except EOFError:
