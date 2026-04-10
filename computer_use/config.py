@@ -324,7 +324,7 @@ class Config:
 
     @property
     def include_execution_feedback(self) -> bool:
-        """是否将执行反馈注入多轮上下文。"""
+        """是否将成功执行反馈注入多轮上下文。"""
         return self.get_bool('INCLUDE_EXECUTION_FEEDBACK', False)
 
     @property

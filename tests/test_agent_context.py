@@ -286,7 +286,11 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(len(user_texts), 2)
         self.assertEqual(user_texts[0], 'Open the calculator')
         self.assertIn('Execution Status: success', user_texts[1])
+        self.assertIn('Parsed Action: wait()', user_texts[1])
         self.assertIn('Execution Result: waited', user_texts[1])
+        self.assertNotIn('Failure Reason:', user_texts[1])
+        self.assertNotIn('Model Input:', user_texts[1])
+        self.assertNotIn('Thought Summary:', user_texts[1])
         self.assertIn("Action: wait()", second_messages[3]['content'])
         self.assertEqual(second_messages[0]['role'], 'system')
         self.assertEqual(second_messages[1]['role'], 'user')
@@ -294,7 +298,7 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(second_messages[3]['role'], 'assistant')
         self.assertEqual(second_messages[-1]['content'][0]['type'], 'image_url')
 
-    def test_context_window_keeps_all_assistant_responses_and_latest_five_screenshots(self):
+    def test_context_window_keeps_feedback_before_screenshots_when_success_feedback_enabled(self):
         self.responses[:] = [
             f"Thought: step {index}\nAction: wait()"
             for index in range(1, 8)
@@ -303,7 +307,11 @@ class AgentContextTests(unittest.TestCase):
         ]
         self.exec_outcomes[:] = [f'waited-{index}' for index in range(1, 8)]
 
-        agent = self._make_agent(max_steps=8, max_context_screenshots=5)
+        agent = self._make_agent(
+            max_steps=8,
+            max_context_screenshots=5,
+            include_execution_feedback=True,
+        )
         result = agent.run('Keep recent screenshots only')
 
         self.assertTrue(result['success'])
@@ -331,6 +339,45 @@ class AgentContextTests(unittest.TestCase):
                 "Thought: step 3\nAction: wait()",
             ],
         )
+        self.assertEqual(final_messages[image_message_indexes[0] - 1]['role'], 'user')
+        self.assertEqual(
+            final_messages[image_message_indexes[0] - 1]['content'],
+            "Step 3 Execution Feedback\nParsed Action: wait()\nExecution Status: success\nExecution Result: waited-3",
+        )
+        self.assertEqual(final_messages[image_message_indexes[0] - 2]['role'], 'assistant')
+        self.assertEqual(
+            final_messages[image_message_indexes[0] - 2]['content'],
+            "Thought: step 3\nAction: wait()",
+        )
+        self.assertEqual(final_messages[-1]['content'][0]['type'], 'image_url')
+
+    def test_context_window_keeps_assistant_before_screenshots_when_success_feedback_disabled(self):
+        self.responses[:] = [
+            f"Thought: step {index}\nAction: wait()"
+            for index in range(1, 8)
+        ] + [
+            "Thought: done\nAction: finished(content='ok')"
+        ]
+        self.exec_outcomes[:] = [f'waited-{index}' for index in range(1, 8)]
+
+        agent = self._make_agent(
+            max_steps=8,
+            max_context_screenshots=5,
+            include_execution_feedback=False,
+        )
+        result = agent.run('Keep recent screenshots only')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 8)
+
+        final_messages = self.calls[-1]['messages']
+        image_message_indexes = [
+            index
+            for index, message in enumerate(final_messages)
+            if isinstance(message.get('content'), list)
+        ]
+
+        self.assertEqual(len(image_message_indexes), 5)
         self.assertEqual(final_messages[image_message_indexes[0] - 1]['role'], 'assistant')
         self.assertEqual(
             final_messages[image_message_indexes[0] - 1]['content'],
@@ -378,6 +425,49 @@ class AgentContextTests(unittest.TestCase):
         joined_text = '\n'.join(second_user_texts)
         self.assertIn('Execution Status: failed', joined_text)
         self.assertIn('Failure Reason: 无法解析动作', joined_text)
+
+    def test_parse_failure_feedback_is_still_injected_when_success_feedback_is_disabled(self):
+        self.responses[:] = [
+            'this is not a valid action',
+            "Thought: now finish\nAction: finished(content='done')",
+        ]
+
+        agent = self._make_agent(include_execution_feedback=False)
+        result = agent.run('Recover from parse errors without success feedback')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 2)
+        second_user_texts = [
+            message['content']
+            for message in self.calls[1]['messages']
+            if message['role'] == 'user' and isinstance(message.get('content'), str)
+        ]
+
+        joined_text = '\n'.join(second_user_texts)
+        self.assertIn('Execution Status: failed', joined_text)
+        self.assertIn('Failure Reason: 无法解析动作', joined_text)
+
+    def test_execution_failure_feedback_is_still_injected_when_success_feedback_is_disabled(self):
+        self.responses[:] = [
+            "Thought: try wait\nAction: wait()",
+            "Thought: now finish\nAction: finished(content='done')",
+        ]
+        self.exec_outcomes[:] = [RuntimeError('device failed')]
+
+        agent = self._make_agent(include_execution_feedback=False)
+        result = agent.run('Recover from execution failure without success feedback')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(self.calls), 2)
+        second_user_texts = [
+            message['content']
+            for message in self.calls[1]['messages']
+            if message['role'] == 'user' and isinstance(message.get('content'), str)
+        ]
+
+        joined_text = '\n'.join(second_user_texts)
+        self.assertIn('Execution Status: failed', joined_text)
+        self.assertIn('Failure Reason: device failed', joined_text)
 
     def test_context_log_writes_jsonl_without_image_base64(self):
         usage = types.SimpleNamespace(
@@ -613,7 +703,7 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('模型: fake-model', rendered)
         self.assertIn('坐标量程: 1000', rendered)
         self.assertIn('上下文截图窗口: 3', rendered)
-        self.assertIn('注入执行反馈: 启用', rendered)
+        self.assertIn('成功执行反馈注入: 启用', rendered)
         self.assertIn('目标显示器: 1', rendered)
 
     def test_system_prompt_includes_runtime_timezone_date_and_weekday(self):
@@ -922,6 +1012,106 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(result['steps'][0]['execution_status'], 'failed')
         self.assertIn('无法解析动作:', result['steps'][0]['failure_reason'])
         self.assertNotIn('\n', result['steps'][0]['failure_reason'])
+
+    def test_append_step_context_only_gates_success_feedback_by_config(self):
+        agent = self._make_agent(include_execution_feedback=False, persistent_session=True)
+        screenshot_item = agent._build_screenshot_item(FakeScreenshot())
+
+        success_step = agent._build_step_record(
+            step=1,
+            screenshot_path=None,
+            model_input='',
+            response='Thought: ok\nAction: wait()',
+            action={'action_type': 'wait', 'action_inputs': {}},
+            thought_summary='ok',
+            execution_status='success',
+            execution_result='waited',
+            failure_reason=None,
+            elapsed_seconds=0.1,
+        )
+        failed_step = agent._build_step_record(
+            step=2,
+            screenshot_path=None,
+            model_input='',
+            response='Thought: bad\nAction: wait()',
+            action={'action_type': 'wait', 'action_inputs': {}},
+            thought_summary='bad',
+            execution_status='failed',
+            execution_result=None,
+            failure_reason='device failed',
+            elapsed_seconds=0.1,
+        )
+
+        agent._append_step_context(
+            current_screenshot_item=screenshot_item,
+            response=success_step['response'],
+            step_record=success_step,
+            parsed_action='wait()',
+            include_feedback=True,
+        )
+        self.assertEqual(
+            [item['kind'] for item in agent.session_history],
+            ['screenshot', 'assistant'],
+        )
+
+        agent._append_step_context(
+            current_screenshot_item=screenshot_item,
+            response=failed_step['response'],
+            step_record=failed_step,
+            parsed_action='wait()',
+            include_feedback=True,
+        )
+        self.assertEqual(
+            [item['kind'] for item in agent.session_history],
+            ['screenshot', 'assistant', 'screenshot', 'assistant', 'execution_feedback'],
+        )
+
+    def test_execution_feedback_message_keeps_only_action_status_and_failure_reason(self):
+        agent = self._make_agent()
+
+        message = agent._build_execution_feedback_message(
+            {
+                'step': 3,
+                'model_input': 'Open the calculator',
+                'thought_summary': 'Need to wait',
+                'execution_status': 'failed',
+                'execution_result': 'waited',
+                'failure_reason': 'device failed',
+            },
+            'wait()',
+        )
+
+        content = message['api_message']['content']
+        self.assertIn('Step 3 Execution Feedback', content)
+        self.assertIn('Parsed Action: wait()', content)
+        self.assertIn('Execution Status: failed', content)
+        self.assertIn('Failure Reason: device failed', content)
+        self.assertNotIn('Model Input:', content)
+        self.assertNotIn('Thought Summary:', content)
+        self.assertNotIn('Execution Result:', content)
+
+    def test_execution_feedback_message_keeps_execution_result_for_success(self):
+        agent = self._make_agent()
+
+        message = agent._build_execution_feedback_message(
+            {
+                'step': 4,
+                'model_input': 'Open the calculator',
+                'thought_summary': 'Need to wait',
+                'execution_status': 'success',
+                'execution_result': 'waited',
+                'failure_reason': None,
+            },
+            'wait()',
+        )
+
+        content = message['api_message']['content']
+        self.assertIn('Parsed Action: wait()', content)
+        self.assertIn('Execution Status: success', content)
+        self.assertIn('Execution Result: waited', content)
+        self.assertNotIn('Failure Reason:', content)
+        self.assertNotIn('Model Input:', content)
+        self.assertNotIn('Thought Summary:', content)
 
     def test_context_log_omits_usage_when_response_has_no_usage(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]

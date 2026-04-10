@@ -113,7 +113,7 @@ class ComputerUseAgent:
             coordinate_scale: 相对坐标量程
             screenshot_size: 传给模型前的截图缩放尺寸，仅支持正方形
             max_context_screenshots: 多轮上下文中最多保留的截图数量（含当前轮）
-            include_execution_feedback: 是否注入历史执行反馈
+            include_execution_feedback: 是否注入成功执行的历史反馈
             log_full_messages: 是否在上下文日志中记录完整 messages
             max_steps: 最大执行步数，默认从配置读取
             natural_scroll: 是否使用自然滚动
@@ -1257,7 +1257,10 @@ class ComputerUseAgent:
         lines.extend(
             [
                 f"  上下文截图窗口: {self.max_context_screenshots}",
-                f"  注入执行反馈: {'启用' if self.include_execution_feedback else '禁用'}",
+                (
+                    '  成功执行反馈注入: '
+                    f"{'启用' if self.include_execution_feedback else '禁用'}"
+                ),
                 f"  日志完整上下文: {'启用' if self.log_full_messages else '禁用'}",
             ]
         )
@@ -1981,13 +1984,15 @@ class ComputerUseAgent:
         """构建动作执行反馈消息项。"""
         lines = [
             f"Step {step_record['step']} Execution Feedback",
-            f"Model Input: {step_record['model_input']}",
-            f"Thought Summary: {step_record['thought_summary'] or '(empty)'}",
             f"Parsed Action: {parsed_action or '(unavailable)'}",
             f"Execution Status: {step_record['execution_status']}",
-            f"Execution Result: {step_record['execution_result'] or '(none)'}",
-            f"Failure Reason: {step_record['failure_reason'] or '(none)'}",
         ]
+        if step_record['execution_status'] == 'success':
+            lines.append(
+                f"Execution Result: {step_record['execution_result'] or '(none)'}"
+            )
+        else:
+            lines.append(f"Failure Reason: {step_record['failure_reason'] or '(none)'}")
         return self._build_history_item(
             kind='execution_feedback',
             api_message={
@@ -2016,7 +2021,13 @@ class ComputerUseAgent:
             )
         )
 
-        if self.include_execution_feedback and include_feedback:
+        should_include_feedback = (
+            include_feedback and (
+                step_record.get('execution_status') == 'failed'
+                or self.include_execution_feedback
+            )
+        )
+        if should_include_feedback:
             feedback_message = self._build_execution_feedback_message(
                 step_record,
                 parsed_action,

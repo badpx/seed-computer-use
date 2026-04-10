@@ -112,7 +112,7 @@ python -m computer_use "打开浏览器"
 | 目标显示器 | `DISPLAY_INDEX` | `0` | 截图和动作执行所使用的显示器编号，`0` 表示主显示器 |
 | 模型截图尺寸 | `SCREENSHOT_SIZE` | - | 传给模型前的截图宽高，仅支持相同宽高值，例如 `1024` 表示缩放为 `1024x1024` |
 | 上下文截图窗口 | `MAX_CONTEXT_SCREENSHOTS` | `5` | 多轮上下文中最多保留的截图数量，包含当前轮 |
-| 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将历史执行结果和失败原因注入多轮上下文 |
+| 注入执行反馈 | `INCLUDE_EXECUTION_FEEDBACK` | `false` | 是否将成功执行结果注入多轮上下文；失败反馈始终会注入 |
 | 最大步数 | `MAX_STEPS` | `100` | 最大执行步数 |
 | 自然滚动 | `NATURAL_SCROLL` | 自动检测 | 是否按系统自然滚动方向解释 scroll 偏移 |
 | 保存上下文日志 | `SAVE_CONTEXT_LOG` | `true` | 是否保存每任务 JSONL 调试日志 |
@@ -229,13 +229,13 @@ ARK_MODEL=ark-code-latest
 - 会话历史中的 assistant 历史响应
 - 已展开并持久生效的 skill 指令消息
 - 最近 `N` 张截图对应的图片消息，默认最多 5 张，包含当前轮
-- 可选的历史执行反馈文本
+- 历史执行反馈文本（失败反馈始终保留，成功反馈可选）
 
 上下文裁剪规则：
 
 - 文本消息默认全部保留，包括用户指令、assistant 响应、skill 指令和执行反馈
 - 图片消息只保留最近 `MAX_CONTEXT_SCREENSHOTS` 张，包含当前截图
-- 执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启
+- 成功执行反馈默认关闭，可通过 `INCLUDE_EXECUTION_FEEDBACK` 或 CLI 开启；失败反馈会始终注入，帮助模型纠正动作
 - 当估算上下文占用超过窗口的 90% 时，会按用户指令 turn 自动压缩旧历史：把旧的 `user / assistant / feedback` 总结成更短的 `user + assistant` pair，并丢弃旧截图
 
 历史截图优先保存在限长内存队列中，不依赖本地截图文件回放。传 `--verbose` 时，工具会把传给模型的截图保存到 `CONTEXT_LOG_DIR/screenshots/`，并在 JSONL 日志中以相对路径引用这些图片，而不是内联 base64 数据，方便调试和回放。
@@ -282,8 +282,8 @@ python -m computer_use [指令] [选项]
 | `--display-index <index>` | - | 设置目标显示器编号，`0` 表示主显示器 |
 | `--screenshot-size <value>` | - | 设置传给模型的截图宽高，仅支持正方形，例如 `1024` 表示 `1024x1024` |
 | `--max-context-screenshots <count>` | - | 设置多轮上下文中保留的截图数量，包含当前轮 |
-| `--include-execution-feedback` | - | 启用执行反馈注入 |
-| `--no-execution-feedback` | - | 禁用执行反馈注入 |
+| `--include-execution-feedback` | - | 启用成功执行反馈注入 |
+| `--no-execution-feedback` | - | 禁用成功执行反馈注入 |
 | `--verbose` | - | 在上下文日志中记录完整 `messages`，并将截图保存到 `CONTEXT_LOG_DIR/screenshots/` |
 | `--natural-scroll` | - | 显式启用自然滚动 |
 | `--traditional-scroll` | - | 显式启用传统滚动 |
@@ -321,7 +321,7 @@ python -m computer_use "分析页面状态" --max-context-screenshots 3
 # 将传给模型的截图缩放为 1024x1024
 python -m computer_use "分析页面状态" --screenshot-size 1024
 
-# 关闭执行反馈注入
+# 关闭成功执行反馈注入（失败反馈仍会保留）
 python -m computer_use "打开浏览器" --no-execution-feedback
 
 # 在上下文日志中记录完整 messages

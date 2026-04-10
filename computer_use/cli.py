@@ -582,7 +582,7 @@ def interactive_mode(
         screenshot_size: 传给模型前的截图缩放尺寸
         max_context_screenshots: 多轮上下文截图窗口
         display_index: 目标显示器编号
-        include_execution_feedback: 是否注入执行反馈
+        include_execution_feedback: 是否注入成功执行反馈
         log_full_messages: 是否在上下文日志中记录完整 messages
         natural_scroll: 是否使用自然滚动
         verbose: 是否打印详细日志
@@ -758,7 +758,7 @@ def single_task_mode(
         screenshot_size: 传给模型前的截图缩放尺寸
         max_context_screenshots: 多轮上下文截图窗口
         display_index: 目标显示器编号
-        include_execution_feedback: 是否注入执行反馈
+        include_execution_feedback: 是否注入成功执行反馈
         log_full_messages: 是否在上下文日志中记录完整 messages
         natural_scroll: 是否使用自然滚动
         verbose: 是否打印详细日志
@@ -930,12 +930,12 @@ def main():
     execution_feedback_group.add_argument(
         '--include-execution-feedback',
         action='store_true',
-        help='启用执行反馈注入'
+        help='启用成功执行反馈注入'
     )
     execution_feedback_group.add_argument(
         '--no-execution-feedback',
         action='store_true',
-        help='禁用执行反馈注入'
+        help='禁用成功执行反馈注入'
     )
 
     parser.add_argument(

@@ -244,8 +244,8 @@ class AndroidAdbDeviceAdapter(DeviceAdapter):
             except RuntimeError as exc:
                 if self._contains_non_ascii(content):
                     raise RuntimeError(
-                        'android_adb type_text 不支持当前非 ASCII 文本输入；'
-                        '当前设备上的 `adb shell input text` 无法稳定输入中文等 Unicode 内容'
+                        'android adb type_text 不支持非 ASCII 文本输入；'
+                        '当前设备上的 `adb shell input text` 无法输入中文等 Unicode 内容'
                     ) from exc
                 raise
             results.append('type_text 执行成功')
