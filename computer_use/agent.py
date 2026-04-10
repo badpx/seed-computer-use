@@ -1947,12 +1947,15 @@ class ComputerUseAgent:
 
     def _format_parse_failure_reason(self, error: Exception, response: str) -> str:
         """将解析失败原因整理成简洁单行文本。"""
-        message = ' '.join(str(error).split())
-        if message:
-            return self._truncate_text(message)
-
-        response_preview = ' '.join(response.split())
-        return f'无法解析动作: {self._truncate_text(response_preview)}'
+        format_hint = (
+            'Failed to parse Action. '
+            'Reply using exactly this format: '
+            'Thought: <your reasoning> '
+            'Action: <one valid action call> '
+            'Do not use markdown fences or extra commentary. '
+            'Action must be a single function-style call such as click(...), wait(), or finished(...).'
+        )
+        return self._truncate_text(format_hint, max_length=500)
 
     def _format_elapsed_time(self, elapsed_seconds: float) -> str:
         """将耗时秒数格式化为易读文本。"""

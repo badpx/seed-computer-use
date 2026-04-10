@@ -431,7 +431,11 @@ class AgentContextTests(unittest.TestCase):
 
         joined_text = '\n'.join(second_user_texts)
         self.assertIn('Execution Status: failed', joined_text)
-        self.assertIn('Failure Reason: 无法解析动作', joined_text)
+        self.assertIn('Failure Reason: Failed to parse Action.', joined_text)
+        self.assertIn('Reply using exactly this format:', joined_text)
+        self.assertIn('Thought: <your reasoning>', joined_text)
+        self.assertIn('Action: <one valid action call>', joined_text)
+        self.assertNotIn('Invalid response preview:', joined_text)
 
     def test_parse_failure_feedback_is_still_injected_when_success_feedback_is_disabled(self):
         self.responses[:] = [
@@ -452,7 +456,9 @@ class AgentContextTests(unittest.TestCase):
 
         joined_text = '\n'.join(second_user_texts)
         self.assertIn('Execution Status: failed', joined_text)
-        self.assertIn('Failure Reason: 无法解析动作', joined_text)
+        self.assertIn('Failure Reason: Failed to parse Action.', joined_text)
+        self.assertIn('Reply using exactly this format:', joined_text)
+        self.assertNotIn('Invalid response preview:', joined_text)
 
     def test_execution_failure_feedback_is_still_injected_when_success_feedback_is_disabled(self):
         self.responses[:] = [
@@ -671,9 +677,11 @@ class AgentContextTests(unittest.TestCase):
 
         self.assertFalse(result['success'])
         self.assertIn(
-            '解析失败: 无法解析动作: this is not a valid action',
+            '解析失败: Failed to parse Action.',
             output.getvalue(),
         )
+        self.assertIn('Reply using exactly this format:', output.getvalue())
+        self.assertNotIn('Invalid response preview:', output.getvalue())
 
     def test_init_output_prints_effective_parameters(self):
         output = io.StringIO()
@@ -1064,7 +1072,9 @@ class AgentContextTests(unittest.TestCase):
 
         self.assertFalse(result['success'])
         self.assertEqual(result['steps'][0]['execution_status'], 'failed')
-        self.assertIn('无法解析动作:', result['steps'][0]['failure_reason'])
+        self.assertIn('Failed to parse Action.', result['steps'][0]['failure_reason'])
+        self.assertIn('Reply using exactly this format:', result['steps'][0]['failure_reason'])
+        self.assertNotIn('Invalid response preview:', result['steps'][0]['failure_reason'])
         self.assertNotIn('\n', result['steps'][0]['failure_reason'])
 
     def test_append_step_context_only_gates_success_feedback_by_config(self):

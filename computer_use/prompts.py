@@ -29,6 +29,7 @@ wait(seconds=3) # Sleep for the specified seconds and take a screenshot to check
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
 
 ## Note
+- Action must be a single function-style call such as click(...), wait(), or finished(...).
 - Normalize the x and y coordinates of the point to integer values within the range [0, 1000].
 - Use {language} in `Thought` part.
 - Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
@@ -59,6 +60,7 @@ wait(seconds=3) # Sleep for the specified seconds and take a screenshot to check
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
 
 ## Note
+- Action must be a single function-style call such as click(...), wait(), or finished(...).
 - Normalize the x and y coordinates of the point to integer values within the range [0, 1000].
 - Use {language} in `Thought` part.
 - Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
