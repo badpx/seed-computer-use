@@ -232,13 +232,15 @@ class LiveStatusRenderer:
         self.stream.flush()
 
     def _refresh_loop(self) -> None:
-        """定时刷新状态线，以更新执行中的耗时。"""
+        """定时刷新状态线，以更新执行中的耗时和动画帧。"""
         while self._running:
             time.sleep(self.refresh_interval)
             if not self._running:
                 break
             with self._lock:
                 self._clear_status_locked()
+                if hasattr(self.status_provider, 'advance_spinner'):
+                    self.status_provider.advance_spinner()
                 self._render_status_locked()
                 self.stream.flush()
 
