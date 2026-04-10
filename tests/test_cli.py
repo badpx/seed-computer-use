@@ -211,6 +211,68 @@ class CliPromptTests(unittest.TestCase):
         self.assertIsNotNone(fake_session.prompts[0]['completer'])
         self.assertTrue(fake_session.prompts[0]['complete_while_typing'])
 
+    def test_interactive_mode_passes_ask_user_callback_to_agent(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.run_calls = []
+                self.close_calls = 0
+                self.model = 'fake-model'
+                self.thinking_mode = 'auto'
+                self.reasoning_effort = 'medium'
+                self.skills = []
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                self.run_calls.append(instruction)
+                answer = self.kwargs['ask_user_callback']('Should I continue?')
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': answer,
+                }
+
+            def format_effective_status(self):
+                return '[生效参数]\n  模型: fake-model'
+
+            def clear_session_context(self):
+                pass
+
+            def compact_session_context(self, manual=False):
+                return True
+
+            def close(self):
+                self.close_calls += 1
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+        fake_session = FakePromptSession(responses=['打开计算器', '继续', '/exit'])
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=fake_session
+        ), mock.patch.object(
+            self.cli,
+            '_create_command_completer',
+            return_value=object(),
+        ), mock.patch.object(
+            builtins,
+            'input',
+            side_effect=AssertionError('input() should not be used'),
+        ):
+            self.cli.interactive_mode(verbose=False)
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertTrue(callable(fake_agent_instances[0].kwargs['ask_user_callback']))
+        self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
+        self.assertEqual(
+            [prompt['text'] for prompt in fake_session.prompts],
+            ['> ', '? ', '> '],
+        )
+
     def test_interactive_mode_falls_back_to_builtin_input_when_prompt_toolkit_is_unavailable(self):
         fake_agent_instances = []
 
@@ -609,6 +671,65 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertNotIn('[配置信息]', normal_output.getvalue())
         self.assertIn('[配置信息]', debug_output.getvalue())
+
+    def test_single_task_mode_does_not_pass_ask_user_callback_to_agent(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': instruction,
+                }
+
+            def close(self):
+                return None
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'):
+            self.cli.single_task_mode(
+                instruction='单次任务',
+                verbose=False,
+            )
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertNotIn('ask_user_callback', fake_agent_instances[0].kwargs)
+
+    def test_ask_user_with_cli_returns_selected_option(self):
+        with mock.patch.object(
+            builtins,
+            'input',
+            side_effect=['2'],
+        ):
+            answer = self.cli._ask_user_with_cli(
+                question='Which option?',
+                options=['A', 'B'],
+                prompt_session=None,
+            )
+
+        self.assertEqual(answer, 'B')
+
+    def test_ask_user_with_cli_prompts_for_other_option_text(self):
+        with mock.patch.object(
+            builtins,
+            'input',
+            side_effect=['3', '自定义回答'],
+        ):
+            answer = self.cli._ask_user_with_cli(
+                question='Which option?',
+                options=['A', 'B'],
+                prompt_session=None,
+            )
+
+        self.assertEqual(answer, '自定义回答')
 
     def test_interactive_mode_handles_status_command_without_running_agent(self):
         fake_agent_instances = []

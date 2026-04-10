@@ -513,6 +513,45 @@ def _read_instruction(
     return input(prompt_text).strip()
 
 
+def _ask_user_with_cli(
+    question: str,
+    options: Optional[list[str]] = None,
+    prompt_session=None,
+) -> str:
+    """在 CLI 中向用户提问并返回最终回答文本。"""
+    print()
+    print(f'[需要用户确认] {question}')
+
+    if not options:
+        return _read_instruction(prompt_session, prompt_text='? ')
+
+    display_options = [str(option).strip() for option in options if str(option).strip()]
+    display_options.append('Other')
+
+    while True:
+        for index, option in enumerate(display_options, start=1):
+            print(f'{index}. {option}')
+        selected = _read_instruction(
+            prompt_session,
+            prompt_text='? ',
+        )
+        try:
+            selected_index = int(selected)
+        except ValueError:
+            print('[输入无效] 请输入选项编号')
+            continue
+
+        if selected_index < 1 or selected_index > len(display_options):
+            print('[输入无效] 请输入有效的选项编号')
+            continue
+
+        chosen_option = display_options[selected_index - 1]
+        if chosen_option != 'Other':
+            return chosen_option
+
+        return _read_instruction(prompt_session, prompt_text='> ')
+
+
 def print_banner():
     """打印欢迎横幅"""
     banner = """
@@ -610,6 +649,23 @@ def interactive_mode(
         print("[提示] 未检测到 prompt_toolkit，回退到基础输入模式")
         print()
 
+    active_renderer: Dict[str, Optional[LiveStatusRenderer]] = {'renderer': None}
+
+    def ask_user_callback(question: str, options: Optional[list[str]] = None) -> str:
+        renderer = active_renderer['renderer']
+        if renderer is not None:
+            renderer.stop()
+        try:
+            with contextlib.redirect_stdout(sys.__stdout__), contextlib.redirect_stderr(sys.__stderr__):
+                return _ask_user_with_cli(
+                    question=question,
+                    options=options,
+                    prompt_session=prompt_session,
+                )
+        finally:
+            if renderer is not None:
+                renderer.start()
+
     # 初始化代理
     agent = None
     try:
@@ -635,6 +691,7 @@ def interactive_mode(
             print_init_status=False,
             persistent_session=True,
             runtime_status_callback=None,
+            ask_user_callback=ask_user_callback,
         )
     except Exception as e:
         print(f"[错误] 初始化失败: {e}")
@@ -652,7 +709,7 @@ def interactive_mode(
             total_skills=len(getattr(agent, 'skills', [])),
         )
         agent.runtime_status_callback = status_bar.update_live_status
-    
+
     try:
         while True:
             try:
@@ -681,6 +738,7 @@ def interactive_mode(
                 if status_bar is not None:
                     status_bar.start_task()
                 renderer = LiveStatusRenderer(status_bar.render) if status_bar is not None else None
+                active_renderer['renderer'] = renderer
                 if renderer is not None:
                     renderer.start()
                 try:
@@ -691,6 +749,7 @@ def interactive_mode(
                     else:
                         result = agent.run(instruction)
                 finally:
+                    active_renderer['renderer'] = None
                     if renderer is not None:
                         renderer.stop()
                 if status_bar is not None:

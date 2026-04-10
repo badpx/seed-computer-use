@@ -32,9 +32,9 @@ class FakeScreenshot:
 
 class FakeToolCall:
     """Simulates a single tool call in a model response."""
-    def __init__(self, name, tool_call_id='tc-1'):
+    def __init__(self, name, tool_call_id='tc-1', arguments='{}'):
         self.id = tool_call_id
-        self.function = types.SimpleNamespace(name=name, arguments='{}')
+        self.function = types.SimpleNamespace(name=name, arguments=arguments)
 
 
 class FakeResponse:
@@ -43,7 +43,13 @@ class FakeResponse:
         serialised_tool_calls = None
         if tool_calls:
             serialised_tool_calls = [
-                {'id': tc.id, 'function': {'name': tc.function.name, 'arguments': '{}'}}
+                {
+                    'id': tc.id,
+                    'function': {
+                        'name': tc.function.name,
+                        'arguments': tc.function.arguments,
+                    },
+                }
                 for tc in tool_calls
             ]
         message = types.SimpleNamespace(
@@ -1843,6 +1849,70 @@ class AgentContextTests(unittest.TestCase):
         tool_msg = next(m for m in second_call_messages if m['role'] == 'tool')
         self.assertIn('hotkey ctrl+n', tool_msg['content'])
         self.assertEqual(tool_msg['tool_call_id'], 'tc-42')
+
+    def test_ask_user_tool_call_injects_tool_result_and_retries(self):
+        self.responses[:] = [
+            {
+                'content': '',
+                'finish_reason': 'tool_calls',
+                'tool_calls': [
+                    FakeToolCall(
+                        'ask_user',
+                        'tc-ask-1',
+                        arguments=json.dumps(
+                            {
+                                'question': 'Which account should I use?',
+                                'options': ['Work', 'Personal'],
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                ],
+            },
+            "Thought: continue\nAction: finished(content='done')",
+        ]
+        asked_questions = []
+
+        def fake_ask_user(question, options=None):
+            asked_questions.append((question, options))
+            return 'Work'
+
+        agent = self._make_agent(ask_user_callback=fake_ask_user)
+        result = agent.run('Choose the account')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(
+            asked_questions,
+            [('Which account should I use?', ['Work', 'Personal'])],
+        )
+        self.assertEqual(len(self.calls), 2)
+        self.assertIn('tools', self.calls[0])
+        tool_names = [tool['function']['name'] for tool in self.calls[0]['tools']]
+        self.assertIn('ask_user', tool_names)
+        second_call_messages = self.calls[1]['messages']
+        self.assertEqual(second_call_messages[3]['role'], 'assistant')
+        self.assertEqual(second_call_messages[3]['tool_calls'][0]['function']['name'], 'ask_user')
+        self.assertEqual(second_call_messages[4]['role'], 'tool')
+        self.assertEqual(second_call_messages[4]['content'], 'Work')
+        self.assertEqual(second_call_messages[4]['tool_call_id'], 'tc-ask-1')
+        self.assertEqual(
+            [item['kind'] for item in agent.session_history],
+            ['user_instruction', 'assistant_tool_call', 'tool_result', 'screenshot', 'assistant'],
+        )
+        self.assertEqual(agent.session_history[2]['api_message']['content'], 'Work')
+
+    def test_ask_user_tool_is_not_registered_without_callback(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent()
+        result = agent.run('Do not expose ask_user without interactive support')
+
+        self.assertTrue(result['success'])
+        tool_names = [
+            tool['function']['name']
+            for tool in self.calls[0].get('tools', [])
+        ]
+        self.assertNotIn('ask_user', tool_names)
 
     def test_non_skill_tool_call_does_not_trigger_skill_loading(self):
         self.responses[:] = [

@@ -59,6 +59,7 @@ PROMPT_PROFILE_TEMPLATES = {
     'cellphone': PHONE_USE_DOUBAO,
 }
 USER_INTERRUPT_MESSAGE = 'The current task was interrupted by the user.'
+ASK_USER_TOOL_NAME = 'ask_user'
 
 
 class ComputerUseAgent:
@@ -97,6 +98,7 @@ class ComputerUseAgent:
         skills_dir: Optional[str] = None,
         enable_skills: Optional[bool] = None,
         runtime_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        ask_user_callback: Optional[Callable[[str, Optional[List[str]]], str]] = None,
     ):
         """
         初始化代理
@@ -127,6 +129,7 @@ class ComputerUseAgent:
             verbose: 是否打印详细日志
             print_init_status: 是否在初始化时打印生效参数
             persistent_session: 是否在多次 run 之间保留会话上下文
+            ask_user_callback: 交互模式下用于 Human-in-the-loop 提问的回调
         """
         # 配置参数
         self.model = model or config.model
@@ -215,6 +218,7 @@ class ComputerUseAgent:
         self.skills: List[Skill] = discover_skills(self.skills_dir) if self.enable_skills else []
         self.skill_tools: List[dict] = skills_to_tools(self.skills) if self.skills else []
         self.runtime_status_callback = runtime_status_callback
+        self.ask_user_callback = ask_user_callback
 
         config.validate()
 
@@ -887,6 +891,7 @@ class ComputerUseAgent:
                     'user_messages': [text_content],
                     'assistant_messages': [],
                     'feedback_messages': [],
+                    'tool_messages': [],
                 }
                 continue
 
@@ -895,12 +900,15 @@ class ComputerUseAgent:
                     'user_messages': [],
                     'assistant_messages': [],
                     'feedback_messages': [],
+                    'tool_messages': [],
                 }
 
             if kind == 'assistant':
                 current_turn['assistant_messages'].append(text_content)
             elif kind == 'execution_feedback':
                 current_turn['feedback_messages'].append(text_content)
+            elif kind == 'tool_result':
+                current_turn['tool_messages'].append(text_content)
 
         if current_turn is not None:
             turns.append(current_turn)
@@ -915,6 +923,7 @@ class ComputerUseAgent:
                 merged_turns[-1]['user_messages'].extend(turn['user_messages'])
                 merged_turns[-1]['assistant_messages'].extend(turn['assistant_messages'])
                 merged_turns[-1]['feedback_messages'].extend(turn['feedback_messages'])
+                merged_turns[-1]['tool_messages'].extend(turn['tool_messages'])
             else:
                 merged_turns.append(turn)
 
@@ -933,6 +942,7 @@ class ComputerUseAgent:
         user_messages = turn.get('user_messages') or []
         assistant_messages = turn.get('assistant_messages') or []
         feedback_messages = turn.get('feedback_messages') or []
+        tool_messages = turn.get('tool_messages') or []
 
         if user_messages:
             sections.append('Original User Instructions:')
@@ -945,6 +955,10 @@ class ComputerUseAgent:
         if feedback_messages:
             sections.append('Execution Feedback:')
             for index, message in enumerate(feedback_messages, start=1):
+                sections.append(f'{index}. {message}')
+        if tool_messages:
+            sections.append('Tool Results:')
+            for index, message in enumerate(tool_messages, start=1):
                 sections.append(f'{index}. {message}')
         return '\n'.join(sections)
 
@@ -1334,8 +1348,9 @@ class ComputerUseAgent:
                 kwargs['thinking'] = {'type': self.thinking_mode}
             if self.reasoning_effort is not None:
                 kwargs['reasoning_effort'] = self.reasoning_effort
-            if self.skill_tools:
-                kwargs['tools'] = self.skill_tools
+            active_tools = self._get_active_tools()
+            if active_tools:
+                kwargs['tools'] = active_tools
 
             response = self.client.chat.completions.create(**kwargs)
             choice = response.choices[0]
@@ -1344,35 +1359,194 @@ class ComputerUseAgent:
             if getattr(choice, 'finish_reason', None) != 'tool_calls':
                 # 正常文本响应，直接返回
                 return response, self._extract_response_text(response)
-            if not self._should_load_skills_from_tool_calls(tool_calls):
+            if not tool_calls:
                 return response, self._extract_response_text(response)
-
-            # 模型请求加载 Skill：注入内容后重新调用
-            # TODO: Level 3 — 区分 skill__ 前缀（加载指南）与 resource__/script__ 前缀
-            #   （按需加载附加资源文件或执行脚本并注入输出），以支持完整的三层渐进式披露。
-            messages.append(choice.message.model_dump())
-            for tc in tool_calls:
-                skill_name = tc.function.name.removeprefix('skill__')
-                self.activated_skills.add(skill_name)
-                skill_content = load_skill(self.skills, tc.function.name)
-                self._append_persistent_skill_message_once(skill_name, skill_content)
-                messages.append({
-                    'role': 'tool',
-                    'content': skill_content,
-                    'tool_call_id': tc.id,
-                })
-            if self.verbose:
-                names = [tc.function.name for tc in tool_calls]
-                print(f"  加载技能: {', '.join(names)}")
-            self.context_logger.log_event(
-                'skill_loaded',
-                step=self.current_step,
-                skills=[tc.function.name for tc in tool_calls],
-            )
-            self._notify_runtime_status()
+            if not self._handle_tool_calls(messages, choice.message, tool_calls):
+                return response, self._extract_response_text(response)
 
         # 超出 skill 加载轮数上限，返回最后一次响应
         return response, self._extract_response_text(response) if response else ''
+
+    def _get_active_tools(self) -> List[Dict[str, Any]]:
+        """返回当前模型调用可用的 tool 定义。"""
+        tools = list(self.skill_tools)
+        if callable(self.ask_user_callback):
+            tools.append(self._build_ask_user_tool())
+        return tools
+
+    def _build_ask_user_tool(self) -> Dict[str, Any]:
+        """构建 Human-in-the-loop ask_user tool 定义。"""
+        return {
+            'type': 'function',
+            'function': {
+                'name': ASK_USER_TOOL_NAME,
+                'description': (
+                    'Pause execution and ask the human user for guidance when you are '
+                    'uncertain. Use this only for two question types: '
+                    '(1) a simple confirmation/approval question, or '
+                    '(2) a multiple-choice question with no more than 5 options.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'question': {
+                            'type': 'string',
+                            'description': 'The question to ask the user.',
+                        },
+                        'options': {
+                            'type': 'array',
+                            'description': (
+                                'Optional answer choices for a multiple-choice question. '
+                                'Do not provide more than 5 options.'
+                            ),
+                            'items': {'type': 'string'},
+                            'maxItems': 5,
+                        },
+                    },
+                    'required': ['question'],
+                },
+            },
+        }
+
+    def _handle_tool_calls(
+        self,
+        messages: List[Dict[str, Any]],
+        message: Any,
+        tool_calls: List[Any],
+    ) -> bool:
+        """处理支持的 tool calls，并在本轮上下文中注入 tool 结果。"""
+        if not tool_calls:
+            return False
+
+        if not all(self._is_supported_tool_call(tc) for tc in tool_calls):
+            return False
+
+        assistant_tool_message = message.model_dump()
+        messages.append(assistant_tool_message)
+
+        persist_tool_exchange = any(
+            str(getattr(getattr(tc, 'function', None), 'name', '')) == ASK_USER_TOOL_NAME
+            for tc in tool_calls
+        )
+        if persist_tool_exchange:
+            self._append_history_item(
+                self._build_history_item(
+                    kind='assistant_tool_call',
+                    api_message=assistant_tool_message,
+                )
+            )
+
+        loaded_skills: List[str] = []
+        for tc in tool_calls:
+            tool_name = str(getattr(getattr(tc, 'function', None), 'name', '') or '')
+            if tool_name.startswith('skill__'):
+                tool_result = self._load_skill_tool_content(tool_name)
+                loaded_skills.append(tool_name)
+            else:
+                tool_result = self._run_ask_user_tool(tc)
+
+            tool_message = {
+                'role': 'tool',
+                'content': tool_result,
+                'tool_call_id': tc.id,
+            }
+            messages.append(tool_message)
+            if tool_name == ASK_USER_TOOL_NAME:
+                self._append_history_item(
+                    self._build_history_item(
+                        kind='tool_result',
+                        api_message=tool_message,
+                        tool_name=tool_name,
+                    )
+                )
+
+        if loaded_skills:
+            if self.verbose:
+                print(f"  加载技能: {', '.join(loaded_skills)}")
+            self.context_logger.log_event(
+                'skill_loaded',
+                step=self.current_step,
+                skills=loaded_skills,
+            )
+            self._notify_runtime_status()
+
+        return True
+
+    def _is_supported_tool_call(self, tool_call: Any) -> bool:
+        """判断 tool call 是否由当前 agent 支持处理。"""
+        tool_name = str(getattr(getattr(tool_call, 'function', None), 'name', '') or '')
+        if tool_name.startswith('skill__'):
+            return True
+        return tool_name == ASK_USER_TOOL_NAME and callable(self.ask_user_callback)
+
+    def _load_skill_tool_content(self, tool_name: str) -> str:
+        """加载 skill tool 对应的说明文本。"""
+        skill_name = tool_name.removeprefix('skill__')
+        self.activated_skills.add(skill_name)
+        skill_content = load_skill(self.skills, tool_name)
+        self._append_persistent_skill_message_once(skill_name, skill_content)
+        return skill_content
+
+    def _run_ask_user_tool(self, tool_call: Any) -> str:
+        """执行 ask_user tool，并返回用户回答文本。"""
+        if not callable(self.ask_user_callback):
+            return 'ask_user is unavailable in the current execution mode.'
+
+        question, options, validation_error = self._parse_ask_user_tool_arguments(tool_call)
+        if validation_error:
+            return validation_error
+
+        answer = self.ask_user_callback(question, options)
+        answer_text = str(answer or '').strip()
+        self.context_logger.log_event(
+            'ask_user',
+            step=self.current_step,
+            question=question,
+            options=options,
+            answer=answer_text,
+        )
+        return answer_text
+
+    def _parse_ask_user_tool_arguments(
+        self,
+        tool_call: Any,
+    ) -> Tuple[str, Optional[List[str]], Optional[str]]:
+        """解析 ask_user tool 参数。"""
+        raw_arguments = str(getattr(getattr(tool_call, 'function', None), 'arguments', '') or '')
+        try:
+            payload = json.loads(raw_arguments or '{}')
+        except json.JSONDecodeError:
+            return '', None, (
+                'ask_user tool call is invalid. Provide a required question string '
+                'and optional options string array with at most 5 items.'
+            )
+
+        if not isinstance(payload, dict):
+            return '', None, (
+                'ask_user tool call is invalid. Provide a required question string '
+                'and optional options string array with at most 5 items.'
+            )
+
+        question = str(payload.get('question') or '').strip()
+        if not question:
+            return '', None, (
+                'ask_user tool call is invalid. Provide a required question string '
+                'and optional options string array with at most 5 items.'
+            )
+
+        options = payload.get('options')
+        if options is None:
+            return question, None, None
+        if (
+            not isinstance(options, list)
+            or len(options) > 5
+            or any(not isinstance(item, str) or not item.strip() for item in options)
+        ):
+            return '', None, (
+                'ask_user tool call is invalid. Provide a required question string '
+                'and optional options string array with at most 5 items.'
+            )
+        return question, [item.strip() for item in options], None
 
     def _should_load_skills_from_tool_calls(self, tool_calls: List[Any]) -> bool:
         """仅当 tool_calls 全部为 skill__ 前缀时，才进入技能加载分支。"""
