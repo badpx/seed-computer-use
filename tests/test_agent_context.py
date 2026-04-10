@@ -96,6 +96,8 @@ class AgentContextTests(unittest.TestCase):
         os.environ['ARK_API_KEY'] = 'test-key'
         os.environ['DEVICE_NAME'] = 'local'
         os.environ.pop('DEVICE_CONFIG_JSON', None)
+        os.environ.pop('THINKING_MODE', None)
+        os.environ.pop('REASONING_EFFORT', None)
         self._original_modules = {}
         self.temp_dir = tempfile.TemporaryDirectory()
         self.responses = []
@@ -110,6 +112,10 @@ class AgentContextTests(unittest.TestCase):
         self.capture_dir.mkdir(parents=True, exist_ok=True)
 
         self.agent_module = self._load_agent_module()
+        self.agent_module.config._config['THINKING_MODE'] = ''
+        self.agent_module.config._config['REASONING_EFFORT'] = ''
+        self.agent_module.config._explicit_keys.discard('THINKING_MODE')
+        self.agent_module.config._explicit_keys.discard('REASONING_EFFORT')
 
     def tearDown(self):
         # Avoid leaking injected modules beyond this test harness.
@@ -182,6 +188,7 @@ class AgentContextTests(unittest.TestCase):
         # even if another test module imported it earlier in this process.
         sys.modules.pop('computer_use.devices.plugins.vnc.plugin', None)
         sys.modules.pop('computer_use.devices.plugins.vnc.adapter', None)
+        sys.modules.pop('computer_use.config', None)
         sys.modules.pop('computer_use.agent', None)
 
         agent_module = importlib.import_module('computer_use.agent')
@@ -676,14 +683,14 @@ class AgentContextTests(unittest.TestCase):
                 verbose=True,
                 print_init_status=True,
                 thinking_mode='disabled',
-                reasoning_effort='minimal',
+                reasoning_effort='low',
             )
 
         printed = output.getvalue()
         self.assertIn('[生效参数]', printed)
         self.assertIn('模型: fake-model', printed)
         self.assertIn('最大步数:', printed)
-        self.assertIn('思考: disabled / minimal', printed)
+        self.assertIn('思考: disabled / default', printed)
         self.assertIn('日志完整上下文', printed)
         self.assertIn('语言: Chinese', printed)
         self.assertNotIn('[初始化] Computer Use Agent', printed)
@@ -1720,28 +1727,48 @@ class AgentContextTests(unittest.TestCase):
         self.assertEqual(self.calls[0]['thinking'], {'type': 'enabled'})
         self.assertEqual(self.calls[0]['reasoning_effort'], 'low')
 
-    def test_minimal_reasoning_effort_forces_disabled_thinking(self):
+    def test_agent_omits_thinking_and_reasoning_when_both_are_unconfigured(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
 
-        agent = self._make_agent(
-            thinking_mode='enabled',
-            reasoning_effort='minimal',
-        )
-        result = agent.run('Use minimal reasoning effort')
+        agent = self._make_agent()
+        result = agent.run('Use model defaults')
+
+        self.assertTrue(result['success'])
+        self.assertNotIn('thinking', self.calls[0])
+        self.assertNotIn('reasoning_effort', self.calls[0])
+
+    def test_agent_passes_only_thinking_when_only_thinking_is_configured(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(thinking_mode='disabled')
+        result = agent.run('Disable thinking only')
 
         self.assertTrue(result['success'])
         self.assertEqual(self.calls[0]['thinking'], {'type': 'disabled'})
-        self.assertEqual(self.calls[0]['reasoning_effort'], 'minimal')
+        self.assertNotIn('reasoning_effort', self.calls[0])
 
-    def test_disabled_thinking_rejects_non_minimal_reasoning_effort(self):
-        with self.assertRaisesRegex(
-            ValueError,
-            'reasoning_effort 只能为 minimal',
-        ):
-            self._make_agent(
-                thinking_mode='disabled',
-                reasoning_effort='high',
-            )
+    def test_agent_enables_thinking_when_only_reasoning_effort_is_configured(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(reasoning_effort='high')
+        result = agent.run('Use configured reasoning effort')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(self.calls[0]['thinking'], {'type': 'enabled'})
+        self.assertEqual(self.calls[0]['reasoning_effort'], 'high')
+
+    def test_agent_ignores_reasoning_effort_when_thinking_is_disabled(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(
+            thinking_mode='disabled',
+            reasoning_effort='high',
+        )
+        result = agent.run('Disable thinking even with reasoning effort')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(self.calls[0]['thinking'], {'type': 'disabled'})
+        self.assertNotIn('reasoning_effort', self.calls[0])
 
     def test_tools_passed_to_api_when_skills_are_enabled(self):
         """When skills are loaded, the 'tools' kwarg is included in every API call."""

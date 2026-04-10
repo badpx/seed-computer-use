@@ -231,7 +231,7 @@ python -m computer_use [指令] [选项]
 | `--model` | `-m` | 指定模型名称 |
 | `--max-steps` | `-s` | 指定最大执行步数 |
 | `--thinking <mode>` | `-t` | 设置思考模式，取值 `enabled` / `disabled` / `auto` |
-| `--reasoning-effort <level>` | `-r` | 设置思考档位，取值 `minimal` / `low` / `medium` / `high` |
+| `--reasoning-effort <level>` | `-r` | 设置思考档位，取值 `low` / `medium` / `high` |
 | `--coordinate-space <space>` | - | 设置坐标空间，取值 `relative` / `pixel` |
 | `--coordinate-scale <value>` | - | 设置 `relative` 坐标量程，例如 `1` / `100` / `1000` |
 | `--device <name>` | - | 设置设备插件名称，例如 `local`、`android_adb`、`vnc` |

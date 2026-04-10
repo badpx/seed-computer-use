@@ -108,7 +108,7 @@ class ComputerUseAgent:
             base_url: API基础URL，默认从配置读取
             temperature: 温度参数，默认从配置读取
             thinking_mode: 方舟思考模式，enabled / disabled / auto
-            reasoning_effort: 方舟思考档位，minimal / low / medium / high
+            reasoning_effort: 方舟思考档位，low / medium / high
             coordinate_space: 坐标空间，relative / pixel
             coordinate_scale: 相对坐标量程
             screenshot_size: 传给模型前的截图缩放尺寸，仅支持正方形
@@ -134,16 +134,30 @@ class ComputerUseAgent:
         self.api_key = api_key or config.api_key
         self.base_url = base_url or config.base_url
         self.temperature = temperature if temperature is not None else config.temperature
+        thinking_mode_explicit = (
+            thinking_mode is not None or config.has_explicit_value('THINKING_MODE')
+        )
         reasoning_effort_explicit = (
             reasoning_effort is not None or config.has_explicit_value('REASONING_EFFORT')
         )
-        self.requested_thinking_mode = thinking_mode or config.thinking_mode
+        self.requested_thinking_mode = (
+            thinking_mode
+            if thinking_mode is not None
+            else (config.thinking_mode if config.has_explicit_value('THINKING_MODE') else None)
+        )
         self.requested_reasoning_effort = (
-            reasoning_effort or config.reasoning_effort
+            reasoning_effort
+            if reasoning_effort is not None
+            else (
+                config.reasoning_effort
+                if config.has_explicit_value('REASONING_EFFORT')
+                else None
+            )
         )
         self.thinking_mode, self.reasoning_effort = resolve_thinking_settings(
             self.requested_thinking_mode,
             self.requested_reasoning_effort,
+            thinking_mode_explicit=thinking_mode_explicit,
             reasoning_effort_explicit=reasoning_effort_explicit,
         )
         self.coordinate_space = normalize_coordinate_space(
@@ -963,7 +977,7 @@ class ComputerUseAgent:
         max_tokens: int,
     ) -> Dict[str, str]:
         """调用模型总结单个历史 turn。"""
-        response = self.client.chat.completions.create(
+        request_kwargs: Dict[str, Any] = dict(
             model=self.model,
             messages=[
                 {
@@ -976,10 +990,13 @@ class ComputerUseAgent:
                 },
             ],
             temperature=self.temperature,
-            thinking={'type': self.thinking_mode},
-            reasoning_effort=self.reasoning_effort,
             max_tokens=max_tokens,
         )
+        if self.thinking_mode is not None:
+            request_kwargs['thinking'] = {'type': self.thinking_mode}
+        if self.reasoning_effort is not None:
+            request_kwargs['reasoning_effort'] = self.reasoning_effort
+        response = self.client.chat.completions.create(**request_kwargs)
         response_text = self._extract_response_text(response)
         return self._parse_compaction_response(response_text)
 
@@ -1233,12 +1250,14 @@ class ComputerUseAgent:
             display_info = None
 
         device_status = self._safe_device_status()
+        thinking_label = self.thinking_mode or 'default'
+        reasoning_label = self.reasoning_effort or 'default'
         lines = [
             '[生效参数]',
             f"  模型: {self.model}",
             f"  设备: {self.device_name}",
             f"  最大步数: {self.max_steps}",
-            f"  思考: {self.thinking_mode} / {self.reasoning_effort}",
+            f"  思考: {thinking_label} / {reasoning_label}",
             f"  坐标空间: {self.coordinate_space}",
         ]
         if display_info is not None:
@@ -1311,9 +1330,11 @@ class ComputerUseAgent:
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,
-                thinking={'type': self.thinking_mode},
-                reasoning_effort=self.reasoning_effort,
             )
+            if self.thinking_mode is not None:
+                kwargs['thinking'] = {'type': self.thinking_mode}
+            if self.reasoning_effort is not None:
+                kwargs['reasoning_effort'] = self.reasoning_effort
             if self.skill_tools:
                 kwargs['tools'] = self.skill_tools
 

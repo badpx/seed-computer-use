@@ -644,8 +644,8 @@ def interactive_mode(
     if prompt_session is not None:
         status_bar = InteractiveStatusBar(
             model=getattr(agent, 'model', config.model),
-            thinking_mode=getattr(agent, 'thinking_mode', config.thinking_mode),
-            reasoning_effort=getattr(agent, 'reasoning_effort', config.reasoning_effort),
+            thinking_mode=(getattr(agent, 'thinking_mode', None) or 'default'),
+            reasoning_effort=(getattr(agent, 'reasoning_effort', None) or 'default'),
             total_skills=len(getattr(agent, 'skills', [])),
         )
         agent.runtime_status_callback = status_bar.update_live_status
@@ -877,8 +877,8 @@ def main():
     parser.add_argument(
         '--reasoning-effort',
         '-r',
-        choices=['minimal', 'low', 'medium', 'high'],
-        help='设置方舟思考档位：minimal / low / medium / high（默认从配置读取）'
+        choices=['low', 'medium', 'high'],
+        help='设置方舟思考档位：low / medium / high（默认从配置读取）'
     )
 
     parser.add_argument(

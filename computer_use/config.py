@@ -11,7 +11,7 @@ from typing import Any, Optional
 from pathlib import Path
 
 THINKING_MODES = ('enabled', 'disabled', 'auto')
-REASONING_EFFORTS = ('minimal', 'low', 'medium', 'high')
+REASONING_EFFORTS = ('low', 'medium', 'high')
 COORDINATE_SPACES = ('relative', 'pixel')
 
 
@@ -28,10 +28,12 @@ def normalize_thinking_mode(
 
 def normalize_reasoning_effort(
     reasoning_effort: Optional[str],
-    default: str = 'medium',
-) -> str:
+    default: Optional[str] = None,
+) -> Optional[str]:
     """标准化思考档位。"""
-    effort = str(reasoning_effort or default).strip().lower()
+    effort = str(reasoning_effort or default or '').strip().lower()
+    if not effort:
+        return default
     if effort in REASONING_EFFORTS:
         return effort
     return default
@@ -40,23 +42,32 @@ def normalize_reasoning_effort(
 def resolve_thinking_settings(
     thinking_mode: Optional[str],
     reasoning_effort: Optional[str],
+    thinking_mode_explicit: bool = False,
     reasoning_effort_explicit: bool = False,
-) -> tuple[str, str]:
+) -> tuple[Optional[str], Optional[str]]:
     """根据思考模式和思考档位，计算最终请求参数。"""
-    normalized_mode = normalize_thinking_mode(thinking_mode)
-    normalized_effort = normalize_reasoning_effort(reasoning_effort)
+    normalized_mode = (
+        normalize_thinking_mode(thinking_mode)
+        if thinking_mode_explicit
+        else None
+    )
+    normalized_effort = (
+        normalize_reasoning_effort(reasoning_effort)
+        if reasoning_effort_explicit
+        else None
+    )
+
+    if not thinking_mode_explicit and not reasoning_effort_explicit:
+        return None, None
+
+    if thinking_mode_explicit and not reasoning_effort_explicit:
+        return normalized_mode, None
+
+    if not thinking_mode_explicit and reasoning_effort_explicit:
+        return 'enabled', normalized_effort
 
     if normalized_mode == 'disabled':
-        if not reasoning_effort_explicit:
-            return 'disabled', 'minimal'
-        if normalized_effort != 'minimal':
-            raise ValueError(
-                "当 thinking_mode=disabled 时，reasoning_effort 只能为 minimal"
-            )
-        return 'disabled', 'minimal'
-
-    if normalized_effort == 'minimal':
-        return 'disabled', 'minimal'
+        return 'disabled', None
 
     return normalized_mode, normalized_effort
 
@@ -88,8 +99,8 @@ class Config:
         'SAVE_CONTEXT_LOG': 'true',
         'MAX_STEPS': '100',
         'TEMPERATURE': '0.0',
-        'THINKING_MODE': 'auto',
-        'REASONING_EFFORT': 'medium',
+        'THINKING_MODE': '',
+        'REASONING_EFFORT': '',
         'COORDINATE_SPACE': 'relative',
         'COORDINATE_SCALE': '1000',
         'SCREENSHOT_SIZE': '',
@@ -332,15 +343,15 @@ class Config:
         """方舟思考模式：enabled / disabled / auto。"""
         return normalize_thinking_mode(
             self._config.get('THINKING_MODE'),
-            default=self.DEFAULTS['THINKING_MODE'],
+            default='auto',
         )
 
     @property
     def reasoning_effort(self) -> str:
-        """方舟思考档位：minimal / low / medium / high。"""
+        """方舟思考档位：low / medium / high。"""
         return normalize_reasoning_effort(
             self._config.get('REASONING_EFFORT'),
-            default=self.DEFAULTS['REASONING_EFFORT'],
+            default='medium',
         )
 
     @property
