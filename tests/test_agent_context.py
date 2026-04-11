@@ -689,6 +689,29 @@ class AgentContextTests(unittest.TestCase):
         self.assertIn('Reply using exactly this format:', output.getvalue())
         self.assertNotIn('Invalid response preview:', output.getvalue())
 
+    def test_runtime_error_prints_friendly_message_without_traceback(self):
+        self.responses[:] = []
+
+        agent = self._make_agent(max_steps=1, verbose=True)
+        original_capture_frame = agent.device.capture_frame
+
+        def failing_capture_frame():
+            raise RuntimeError('android_adb capture screenshot 失败，退出码 255')
+
+        agent.device.capture_frame = failing_capture_frame
+        output = io.StringIO()
+
+        try:
+            with redirect_stdout(output):
+                result = agent.run('Show runtime error details')
+        finally:
+            agent.device.capture_frame = original_capture_frame
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'android_adb capture screenshot 失败，退出码 255')
+        self.assertIn('[错误] android_adb capture screenshot 失败，退出码 255', output.getvalue())
+        self.assertNotIn('Traceback (most recent call last)', output.getvalue())
+
     def test_init_output_prints_effective_parameters(self):
         output = io.StringIO()
 

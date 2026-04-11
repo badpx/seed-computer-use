@@ -869,6 +869,23 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(exc.exception.code, 0)
         self.assertIn('感谢使用，再见！', output.getvalue())
 
+    def test_main_prints_friendly_error_without_traceback(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, 'single_task_mode', side_effect=RuntimeError('no devices/emulators found')
+        ), mock.patch.object(
+            sys, 'argv', ['computer_use', '单次任务']
+        ):
+            with self.assertRaises(SystemExit) as exc:
+                self.cli.main()
+
+        self.assertEqual(exc.exception.code, 1)
+        self.assertIn('[错误] no devices/emulators found', output.getvalue())
+        self.assertNotIn('Traceback (most recent call last)', output.getvalue())
+
     def test_ask_user_with_cli_returns_selected_option(self):
         with mock.patch.object(
             builtins,

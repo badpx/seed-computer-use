@@ -1253,10 +1253,7 @@ def main():
         print("\n感谢使用，再见！")
         sys.exit(0)
     except Exception as e:
-        if verbose:
-            print(f"\n[错误] {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n[错误] {e}")
         sys.exit(1)
 
 

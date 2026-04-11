@@ -695,8 +695,6 @@ class ComputerUseAgent:
             result['error'] = str(e)
             if self.verbose:
                 print(f"\n[错误] {e}")
-                import traceback
-                traceback.print_exc()
         finally:
             if result['elapsed_seconds'] is None:
                 result['elapsed_seconds'] = time.perf_counter() - task_start_time
