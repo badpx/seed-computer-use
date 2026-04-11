@@ -30,6 +30,26 @@ def _parse_device_config_json(raw_json: str) -> Dict[str, Any]:
     return payload
 
 
+@dataclass
+class EofConfirmationState:
+    """管理交互式输入中的 Ctrl+D 二次确认退出。"""
+
+    pending_confirmation: bool = False
+    warning_message: str = '[提示] 再按一次 Ctrl+D 将退出'
+
+    def confirm_or_raise(self) -> None:
+        """首次 EOF 给出提示，连续第二次 EOF 才真正退出。"""
+        if self.pending_confirmation:
+            raise EOFError
+        self.pending_confirmation = True
+        print()
+        print(self.warning_message)
+
+    def reset(self) -> None:
+        """在用户继续输入后清空退出确认状态。"""
+        self.pending_confirmation = False
+
+
 class InteractiveStatusBar:
     """交互模式输入栏底部状态栏。"""
 
@@ -517,17 +537,105 @@ def _read_instruction(
     prompt_text: str = '> ',
     bottom_toolbar=None,
     completer=None,
+    eof_confirmation_state: Optional[EofConfirmationState] = None,
 ) -> str:
     """从 prompt_toolkit 或内建 input 读取用户指令。"""
-    if prompt_session is not None:
-        return prompt_session.prompt(
-            prompt_text,
-            bottom_toolbar=bottom_toolbar,
-            completer=completer,
-            complete_while_typing=completer is not None,
-        ).strip()
+    while True:
+        try:
+            if prompt_session is not None:
+                instruction = prompt_session.prompt(
+                    prompt_text,
+                    bottom_toolbar=bottom_toolbar,
+                    completer=completer,
+                    complete_while_typing=completer is not None,
+                ).strip()
+            else:
+                instruction = input(prompt_text).strip()
+        except EOFError:
+            if eof_confirmation_state is None:
+                raise
+            eof_confirmation_state.confirm_or_raise()
+            continue
 
-    return input(prompt_text).strip()
+        if eof_confirmation_state is not None:
+            eof_confirmation_state.reset()
+        return instruction
+
+
+def _ask_user_with_cli(
+    question: str,
+    options: Optional[list[str]] = None,
+    prompt_session=None,
+    eof_confirmation_state: Optional[EofConfirmationState] = None,
+) -> str:
+    """在 CLI 中向用户提问并返回最终回答文本。"""
+    print()
+    print(f'[需要用户确认] {question}')
+
+    if not options:
+        return _read_instruction(
+            prompt_session,
+            prompt_text='? ',
+            eof_confirmation_state=eof_confirmation_state,
+        )
+
+    display_options = [str(option).strip() for option in options if str(option).strip()]
+    display_options.append('Other')
+
+    while True:
+        for index, option in enumerate(display_options, start=1):
+            print(f'{index}. {option}')
+        selected = _read_instruction(
+            prompt_session,
+            prompt_text='? ',
+            eof_confirmation_state=eof_confirmation_state,
+        )
+        try:
+            selected_index = int(selected)
+        except ValueError:
+            print('[输入无效] 请输入选项编号')
+            continue
+
+        if selected_index < 1 or selected_index > len(display_options):
+            print('[输入无效] 请输入有效的选项编号')
+            continue
+
+        chosen_option = display_options[selected_index - 1]
+        if chosen_option != 'Other':
+            return chosen_option
+
+        return _read_instruction(
+            prompt_session,
+            prompt_text='> ',
+            eof_confirmation_state=eof_confirmation_state,
+        )
+
+
+def _build_cli_ask_user_callback(
+    prompt_session=None,
+    active_renderer: Optional[Dict[str, Optional['LiveStatusRenderer']]] = None,
+    eof_confirmation_state: Optional[EofConfirmationState] = None,
+) -> Callable[[str, Optional[list[str]]], str]:
+    """构造供 CLI 模式使用的 ask_user 回调。"""
+    renderer_state = active_renderer or {'renderer': None}
+
+    def ask_user_callback(question: str, options: Optional[list[str]] = None) -> str:
+        renderer = renderer_state['renderer']
+        if renderer is not None:
+            renderer.stop()
+        try:
+            with contextlib.redirect_stdout(sys.__stdout__), contextlib.redirect_stderr(sys.__stderr__):
+                return _ask_user_with_cli(
+                    question=question,
+                    options=options,
+                    prompt_session=prompt_session,
+                    eof_confirmation_state=eof_confirmation_state,
+                )
+        finally:
+            if renderer is not None:
+                renderer.start()
+
+    return ask_user_callback
 
 
 def print_banner():
@@ -627,6 +735,14 @@ def interactive_mode(
         print("[提示] 未检测到 prompt_toolkit，回退到基础输入模式")
         print()
 
+    active_renderer: Dict[str, Optional[LiveStatusRenderer]] = {'renderer': None}
+    eof_confirmation_state = EofConfirmationState()
+    ask_user_callback = _build_cli_ask_user_callback(
+        prompt_session=prompt_session,
+        active_renderer=active_renderer,
+        eof_confirmation_state=eof_confirmation_state,
+    )
+
     # 初始化代理
     agent = None
     try:
@@ -652,6 +768,7 @@ def interactive_mode(
             print_init_status=False,
             persistent_session=True,
             runtime_status_callback=None,
+            ask_user_callback=ask_user_callback,
         )
     except Exception as e:
         print(f"[错误] 初始化失败: {e}")
@@ -669,7 +786,7 @@ def interactive_mode(
             total_skills=len(getattr(agent, 'skills', [])),
         )
         agent.runtime_status_callback = status_bar.update_live_status
-    
+
     try:
         while True:
             try:
@@ -678,6 +795,7 @@ def interactive_mode(
                     prompt_session,
                     bottom_toolbar=status_bar.render if status_bar is not None else None,
                     completer=command_completer,
+                    eof_confirmation_state=eof_confirmation_state,
                 )
                 
                 if _dispatch_interactive_command(
@@ -698,6 +816,7 @@ def interactive_mode(
                 if status_bar is not None:
                     status_bar.start_task()
                 renderer = LiveStatusRenderer(status_bar) if status_bar is not None else None
+                active_renderer['renderer'] = renderer
                 if renderer is not None:
                     renderer.start()
                 try:
@@ -708,6 +827,7 @@ def interactive_mode(
                     else:
                         result = agent.run(instruction)
                 finally:
+                    active_renderer['renderer'] = None
                     if renderer is not None:
                         renderer.stop()
                 if status_bar is not None:
@@ -801,6 +921,16 @@ def single_task_mode(
 
     ensure_supported_python()
     from .agent import ComputerUseAgent
+    ask_user_callback = None
+    if config.enable_ask_user_for_single_task:
+        prompt_session = _create_prompt_session()
+        if verbose and prompt_session is None:
+            print("[提示] 未检测到 prompt_toolkit，回退到基础输入模式")
+            print()
+        ask_user_callback = _build_cli_ask_user_callback(
+            prompt_session=prompt_session,
+            eof_confirmation_state=EofConfirmationState(),
+        )
     
     # 初始化代理
     agent = ComputerUseAgent(
@@ -824,6 +954,7 @@ def single_task_mode(
         verbose=verbose,
         print_init_status=True,
         persistent_session=False,
+        ask_user_callback=ask_user_callback,
     )
 
     # 执行任务
@@ -1118,6 +1249,9 @@ def main():
         if verbose:
             print("\n\n[退出] 用户中断")
         sys.exit(130)
+    except EOFError:
+        print("\n感谢使用，再见！")
+        sys.exit(0)
     except Exception as e:
         if verbose:
             print(f"\n[错误] {e}")

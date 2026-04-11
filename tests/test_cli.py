@@ -211,6 +211,68 @@ class CliPromptTests(unittest.TestCase):
         self.assertIsNotNone(fake_session.prompts[0]['completer'])
         self.assertTrue(fake_session.prompts[0]['complete_while_typing'])
 
+    def test_interactive_mode_passes_ask_user_callback_to_agent(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.run_calls = []
+                self.close_calls = 0
+                self.model = 'fake-model'
+                self.thinking_mode = 'auto'
+                self.reasoning_effort = 'medium'
+                self.skills = []
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                self.run_calls.append(instruction)
+                answer = self.kwargs['ask_user_callback']('Should I continue?')
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': answer,
+                }
+
+            def format_effective_status(self):
+                return '[生效参数]\n  模型: fake-model'
+
+            def clear_session_context(self):
+                pass
+
+            def compact_session_context(self, manual=False):
+                return True
+
+            def close(self):
+                self.close_calls += 1
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+        fake_session = FakePromptSession(responses=['打开计算器', '继续', '/exit'])
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=fake_session
+        ), mock.patch.object(
+            self.cli,
+            '_create_command_completer',
+            return_value=object(),
+        ), mock.patch.object(
+            builtins,
+            'input',
+            side_effect=AssertionError('input() should not be used'),
+        ):
+            self.cli.interactive_mode(verbose=False)
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertTrue(callable(fake_agent_instances[0].kwargs['ask_user_callback']))
+        self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
+        self.assertEqual(
+            [prompt['text'] for prompt in fake_session.prompts],
+            ['> ', '? ', '> '],
+        )
+
     def test_interactive_mode_falls_back_to_builtin_input_when_prompt_toolkit_is_unavailable(self):
         fake_agent_instances = []
 
@@ -261,6 +323,112 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(fake_agent_instances[0].run_calls, ['粘贴的一长串指令'])
         self.assertEqual(fake_agent_instances[0].close_calls, 1)
         self.assertEqual(mock_input.call_count, 2)
+
+    def test_interactive_mode_ctrl_c_during_ask_user_cancels_current_task(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.run_calls = []
+                self.clear_calls = 0
+                self.compact_calls = 0
+                self.close_calls = 0
+                self.model = 'fake-model'
+                self.thinking_mode = 'auto'
+                self.reasoning_effort = 'medium'
+                self.skills = []
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                self.run_calls.append(instruction)
+                self.kwargs['ask_user_callback']('Should I continue?')
+                return {'success': True, 'steps': [], 'final_response': 'done'}
+
+            def format_effective_status(self):
+                return '[生效参数]\n  模型: fake-model'
+
+            def clear_session_context(self):
+                self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
+
+            def close(self):
+                self.close_calls += 1
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=None
+        ), mock.patch.object(
+            builtins, 'input', side_effect=['打开计算器', KeyboardInterrupt, '/exit']
+        ):
+            self.cli.interactive_mode(verbose=False)
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
+        self.assertIn('[中断] 用户取消操作', output.getvalue())
+
+    def test_interactive_mode_ctrl_d_during_ask_user_exits(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.run_calls = []
+                self.clear_calls = 0
+                self.compact_calls = 0
+                self.close_calls = 0
+                self.model = 'fake-model'
+                self.thinking_mode = 'auto'
+                self.reasoning_effort = 'medium'
+                self.skills = []
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                self.run_calls.append(instruction)
+                self.kwargs['ask_user_callback']('Should I continue?')
+                return {'success': True, 'steps': [], 'final_response': 'done'}
+
+            def format_effective_status(self):
+                return '[生效参数]\n  模型: fake-model'
+
+            def clear_session_context(self):
+                self.clear_calls += 1
+
+            def compact_session_context(self, manual=False):
+                self.compact_calls += 1
+                return True
+
+            def close(self):
+                self.close_calls += 1
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=None
+        ), mock.patch.object(
+            builtins, 'input', side_effect=['打开计算器', EOFError, EOFError]
+        ):
+            self.cli.interactive_mode(verbose=False)
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertEqual(fake_agent_instances[0].run_calls, ['打开计算器'])
+        self.assertEqual(fake_agent_instances[0].close_calls, 1)
+        self.assertIn('感谢使用，再见！', output.getvalue())
 
     def test_interactive_mode_updates_status_bar_after_task(self):
         fake_agent_instances = []
@@ -371,7 +539,7 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(status_bar._format_elapsed_time(3600), '1h00m')
         self.assertEqual(status_bar._format_elapsed_time(7260), '2h01m')
 
-    def test_interactive_mode_exits_on_ctrl_d_with_prompt_toolkit(self):
+    def test_interactive_mode_exits_on_double_ctrl_d_with_prompt_toolkit(self):
         fake_agent_instances = []
 
         class FakeAgent:
@@ -415,9 +583,10 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertEqual(len(fake_agent_instances), 1)
         self.assertEqual(fake_agent_instances[0].run_calls, [])
+        self.assertIn('再按一次 Ctrl+D 将退出', output.getvalue())
         self.assertIn('感谢使用，再见！', output.getvalue())
 
-    def test_interactive_mode_exits_on_ctrl_d_with_builtin_input(self):
+    def test_interactive_mode_exits_on_double_ctrl_d_with_builtin_input(self):
         fake_agent_instances = []
 
         class FakeAgent:
@@ -456,12 +625,13 @@ class CliPromptTests(unittest.TestCase):
         ), mock.patch.object(
             self.cli, '_create_prompt_session', return_value=None
         ), mock.patch.object(
-            builtins, 'input', side_effect=EOFError
+            builtins, 'input', side_effect=[EOFError, EOFError]
         ):
             self.cli.interactive_mode(verbose=False)
 
         self.assertEqual(len(fake_agent_instances), 1)
         self.assertEqual(fake_agent_instances[0].run_calls, [])
+        self.assertIn('再按一次 Ctrl+D 将退出', output.getvalue())
         self.assertIn('感谢使用，再见！', output.getvalue())
 
     def test_single_task_mode_passes_context_window_options_to_agent(self):
@@ -609,6 +779,162 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertNotIn('[配置信息]', normal_output.getvalue())
         self.assertIn('[配置信息]', debug_output.getvalue())
+
+    def test_single_task_mode_does_not_pass_ask_user_callback_to_agent(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': instruction,
+                }
+
+            def close(self):
+                return None
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'):
+            self.cli.single_task_mode(
+                instruction='单次任务',
+                verbose=False,
+            )
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertIsNone(fake_agent_instances[0].kwargs['ask_user_callback'])
+
+    def test_single_task_mode_passes_ask_user_callback_to_agent_when_enabled_in_config(self):
+        fake_agent_instances = []
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                fake_agent_instances.append(self)
+
+            def run(self, instruction):
+                answer = self.kwargs['ask_user_callback']('Should I continue?')
+                return {
+                    'success': True,
+                    'steps': [],
+                    'final_response': f'{instruction}:{answer}',
+                }
+
+            def close(self):
+                return None
+
+        fake_agent_module = types.ModuleType('computer_use.agent')
+        fake_agent_module.ComputerUseAgent = FakeAgent
+        sys.modules['computer_use.agent'] = fake_agent_module
+
+        with mock.patch.object(self.cli, 'ensure_supported_python'), mock.patch.object(
+            self.cli, '_create_prompt_session', return_value=None
+        ), mock.patch.object(
+            type(self.cli.config),
+            'enable_ask_user_for_single_task',
+            new_callable=mock.PropertyMock,
+            return_value=True,
+        ), mock.patch.object(
+            builtins, 'input', side_effect=['继续']
+        ):
+            result = self.cli.single_task_mode(
+                instruction='单次任务',
+                verbose=False,
+            )
+
+        self.assertEqual(len(fake_agent_instances), 1)
+        self.assertTrue(callable(fake_agent_instances[0].kwargs['ask_user_callback']))
+        self.assertEqual(result['final_response'], '单次任务:继续')
+
+    def test_main_exits_cleanly_on_eof_from_single_task_mode(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, 'single_task_mode', side_effect=EOFError
+        ), mock.patch.object(
+            sys, 'argv', ['computer_use', '单次任务']
+        ):
+            with self.assertRaises(SystemExit) as exc:
+                self.cli.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertIn('感谢使用，再见！', output.getvalue())
+
+    def test_ask_user_with_cli_returns_selected_option(self):
+        with mock.patch.object(
+            builtins,
+            'input',
+            side_effect=['2'],
+        ):
+            answer = self.cli._ask_user_with_cli(
+                question='Which option?',
+                options=['A', 'B'],
+                prompt_session=None,
+            )
+
+        self.assertEqual(answer, 'B')
+
+    def test_ask_user_with_cli_prompts_for_other_option_text(self):
+        with mock.patch.object(
+            builtins,
+            'input',
+            side_effect=['3', '自定义回答'],
+        ):
+            answer = self.cli._ask_user_with_cli(
+                question='Which option?',
+                options=['A', 'B'],
+                prompt_session=None,
+            )
+
+        self.assertEqual(answer, '自定义回答')
+
+    def test_ask_user_with_cli_requires_second_ctrl_d_to_exit(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output), mock.patch.object(
+            builtins,
+            'input',
+            side_effect=[EOFError, '继续'],
+        ):
+            answer = self.cli._ask_user_with_cli(
+                question='Should I continue?',
+                prompt_session=None,
+                eof_confirmation_state=self.cli.EofConfirmationState(),
+            )
+
+        self.assertEqual(answer, '继续')
+        self.assertIn('再按一次 Ctrl+D 将退出', output.getvalue())
+
+    def test_read_instruction_resets_eof_confirmation_after_successful_input(self):
+        output = io.StringIO()
+        eof_confirmation_state = self.cli.EofConfirmationState()
+
+        with redirect_stdout(output), mock.patch.object(
+            builtins,
+            'input',
+            side_effect=[EOFError, '继续', EOFError, EOFError],
+        ):
+            first_value = self.cli._read_instruction(
+                prompt_session=None,
+                eof_confirmation_state=eof_confirmation_state,
+            )
+            with self.assertRaises(EOFError):
+                self.cli._read_instruction(
+                    prompt_session=None,
+                    eof_confirmation_state=eof_confirmation_state,
+                )
+
+        self.assertEqual(first_value, '继续')
+        self.assertEqual(output.getvalue().count('再按一次 Ctrl+D 将退出'), 2)
 
     def test_interactive_mode_handles_status_command_without_running_agent(self):
         fake_agent_instances = []
