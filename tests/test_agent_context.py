@@ -90,16 +90,37 @@ class FakeCompletionAPI:
         return FakeResponse(item)
 
 
-class FakeArkClient:
+class FakeLlmClient:
     def __init__(self, responses, calls):
-        self.chat = types.SimpleNamespace(
-            completions=FakeCompletionAPI(responses, calls)
-        )
+        self._api = FakeCompletionAPI(responses, calls)
+
+    def create_chat_completion(self, **kwargs):
+        request = {
+            'model': kwargs['model'],
+            'messages': kwargs['messages'],
+            'temperature': kwargs['temperature'],
+        }
+        if kwargs.get('max_tokens') is not None:
+            request['max_tokens'] = kwargs['max_tokens']
+        if kwargs.get('tools'):
+            request['tools'] = kwargs['tools']
+
+        extra_body = {}
+        thinking_mode = kwargs.get('thinking_mode')
+        reasoning_effort = kwargs.get('reasoning_effort')
+        if thinking_mode is not None:
+            extra_body['thinking'] = {'type': thinking_mode}
+        if reasoning_effort is not None:
+            extra_body['reasoning_effort'] = reasoning_effort
+        if extra_body:
+            request['extra_body'] = extra_body
+
+        return self._api.create(**request)
 
 
 class AgentContextTests(unittest.TestCase):
     def setUp(self):
-        os.environ['ARK_API_KEY'] = 'test-key'
+        os.environ['API_KEY'] = 'test-key'
         os.environ['DEVICE_NAME'] = 'local'
         os.environ.pop('DEVICE_CONFIG_JSON', None)
         os.environ.pop('THINKING_MODE', None)
@@ -149,16 +170,6 @@ class AgentContextTests(unittest.TestCase):
         local_executor_stub = types.ModuleType('computer_use.devices.plugins.local.executor')
         local_executor_stub.LocalActionExecutor = self._build_executor()
 
-        ark_stub = types.ModuleType('volcenginesdkarkruntime')
-
-        class PlaceholderArk:
-            def __init__(self, *args, **kwargs):
-                self.chat = types.SimpleNamespace(
-                    completions=types.SimpleNamespace(create=lambda **_: None)
-                )
-
-        ark_stub.Ark = PlaceholderArk
-
         # VNC plugin depends on vncdotool. Stub it so tests can exercise the
         # prompt-profile integration without installing external dependencies.
         for module_name in ('vncdotool', 'vncdotool.api'):
@@ -187,7 +198,6 @@ class AgentContextTests(unittest.TestCase):
 
         sys.modules['computer_use.screenshot'] = screenshot_stub
         sys.modules['computer_use.devices.plugins.local.executor'] = local_executor_stub
-        sys.modules['volcenginesdkarkruntime'] = ark_stub
         sys.modules['vncdotool'] = vncdotool_stub
         sys.modules['vncdotool.api'] = vncdotool_api_stub
         # Force the VNC plugin to import against the current vncdotool stubs
@@ -199,7 +209,7 @@ class AgentContextTests(unittest.TestCase):
 
         agent_module = importlib.import_module('computer_use.agent')
 
-        agent_module.Ark = lambda base_url, api_key: FakeArkClient(
+        agent_module.create_llm_client = lambda **kwargs: FakeLlmClient(
             self.responses,
             self.calls,
         )
@@ -1763,8 +1773,13 @@ class AgentContextTests(unittest.TestCase):
         result = agent.run('Use low reasoning effort')
 
         self.assertTrue(result['success'])
-        self.assertEqual(self.calls[0]['thinking'], {'type': 'enabled'})
-        self.assertEqual(self.calls[0]['reasoning_effort'], 'low')
+        self.assertEqual(
+            self.calls[0]['extra_body'],
+            {
+                'thinking': {'type': 'enabled'},
+                'reasoning_effort': 'low',
+            },
+        )
 
     def test_agent_omits_thinking_and_reasoning_when_both_are_unconfigured(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
@@ -1783,8 +1798,10 @@ class AgentContextTests(unittest.TestCase):
         result = agent.run('Disable thinking only')
 
         self.assertTrue(result['success'])
-        self.assertEqual(self.calls[0]['thinking'], {'type': 'disabled'})
-        self.assertNotIn('reasoning_effort', self.calls[0])
+        self.assertEqual(
+            self.calls[0]['extra_body'],
+            {'thinking': {'type': 'disabled'}},
+        )
 
     def test_agent_enables_thinking_when_only_reasoning_effort_is_configured(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
@@ -1793,8 +1810,13 @@ class AgentContextTests(unittest.TestCase):
         result = agent.run('Use configured reasoning effort')
 
         self.assertTrue(result['success'])
-        self.assertEqual(self.calls[0]['thinking'], {'type': 'enabled'})
-        self.assertEqual(self.calls[0]['reasoning_effort'], 'high')
+        self.assertEqual(
+            self.calls[0]['extra_body'],
+            {
+                'thinking': {'type': 'enabled'},
+                'reasoning_effort': 'high',
+            },
+        )
 
     def test_agent_ignores_reasoning_effort_when_thinking_is_disabled(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
@@ -1806,8 +1828,10 @@ class AgentContextTests(unittest.TestCase):
         result = agent.run('Disable thinking even with reasoning effort')
 
         self.assertTrue(result['success'])
-        self.assertEqual(self.calls[0]['thinking'], {'type': 'disabled'})
-        self.assertNotIn('reasoning_effort', self.calls[0])
+        self.assertEqual(
+            self.calls[0]['extra_body'],
+            {'thinking': {'type': 'disabled'}},
+        )
 
     def test_tools_passed_to_api_when_skills_are_enabled(self):
         """When skills are loaded, the 'tools' kwarg is included in every API call."""

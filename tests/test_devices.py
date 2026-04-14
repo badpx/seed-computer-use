@@ -670,7 +670,7 @@ class DeviceCommandMapperTests(unittest.TestCase):
 
 class AgentDeviceInjectionTests(unittest.TestCase):
     def setUp(self):
-        os.environ['ARK_API_KEY'] = 'test-key'
+        os.environ['API_KEY'] = 'test-key'
         self.responses = [
             "Thought: first\nAction: click(point='10 20')",
             "Thought: done\nAction: finished(content='ok')",
@@ -681,17 +681,6 @@ class AgentDeviceInjectionTests(unittest.TestCase):
         self.connected = False
         self.closed = False
 
-        ark_stub = types.ModuleType('volcenginesdkarkruntime')
-
-        class PlaceholderArk:
-            def __init__(inner_self, *args, **kwargs):
-                del args, kwargs
-                inner_self.chat = types.SimpleNamespace(
-                    completions=types.SimpleNamespace(create=self._create_response)
-                )
-
-        ark_stub.Ark = PlaceholderArk
-        sys.modules['volcenginesdkarkruntime'] = ark_stub
         sys.modules.pop('computer_use.agent', None)
 
     def _create_response(self, **kwargs):
@@ -750,6 +739,9 @@ class AgentDeviceInjectionTests(unittest.TestCase):
 
         agent_module = importlib.import_module('computer_use.agent')
         agent_module.time.sleep = lambda _: None
+        agent_module.create_llm_client = lambda **kwargs: types.SimpleNamespace(
+            create_chat_completion=self._create_response
+        )
 
         agent = agent_module.ComputerUseAgent(
             model='fake-model',

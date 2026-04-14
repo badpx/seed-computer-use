@@ -5,6 +5,87 @@ from computer_use.config import Config
 
 
 class ConfigDefaultsTests(unittest.TestCase):
+    def test_api_key_reads_from_neutral_name(self):
+        original_env = os.environ.get('API_KEY')
+        original_legacy = os.environ.pop('ARK_API_KEY', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['API_KEY'] = 'neutral-key'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.api_key, 'neutral-key')
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('API_KEY', None)
+            else:
+                os.environ['API_KEY'] = original_env
+            if original_legacy is not None:
+                os.environ['ARK_API_KEY'] = original_legacy
+
+    def test_provider_defaults_to_ark(self):
+        original_env = os.environ.pop('PROVIDER', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.provider, 'ark')
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is not None:
+                os.environ['PROVIDER'] = original_env
+
+    def test_provider_accepts_openrouter(self):
+        original_env = os.environ.get('PROVIDER')
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['PROVIDER'] = 'openrouter'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.provider, 'openrouter')
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('PROVIDER', None)
+            else:
+                os.environ['PROVIDER'] = original_env
+
+    def test_model_reads_from_neutral_name(self):
+        original_env = os.environ.get('MODEL')
+        original_legacy = os.environ.pop('ARK_MODEL', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['MODEL'] = 'neutral-model'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.model, 'neutral-model')
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('MODEL', None)
+            else:
+                os.environ['MODEL'] = original_env
+            if original_legacy is not None:
+                os.environ['ARK_MODEL'] = original_legacy
+
+    def test_base_url_reads_from_neutral_name(self):
+        original_env = os.environ.get('BASE_URL')
+        original_legacy = os.environ.pop('ARK_BASE_URL', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['BASE_URL'] = 'https://example.invalid/v1'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.base_url, 'https://example.invalid/v1')
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('BASE_URL', None)
+            else:
+                os.environ['BASE_URL'] = original_env
+            if original_legacy is not None:
+                os.environ['ARK_BASE_URL'] = original_legacy
+
     def test_max_steps_defaults_to_one_hundred(self):
         original_env = os.environ.pop('MAX_STEPS', None)
         original_load_from_file = Config._load_from_file
@@ -52,6 +133,36 @@ class ConfigDefaultsTests(unittest.TestCase):
             Config._load_from_file = original_load_from_file
             if original_env is not None:
                 os.environ['DEVICE_CONFIG_JSON'] = original_env
+
+    def test_provider_config_json_defaults_to_empty_dict(self):
+        original_env = os.environ.pop('PROVIDER_CONFIG_JSON', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.provider_config, {})
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is not None:
+                os.environ['PROVIDER_CONFIG_JSON'] = original_env
+
+    def test_provider_config_json_reads_valid_json_object(self):
+        original_env = os.environ.get('PROVIDER_CONFIG_JSON')
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['PROVIDER_CONFIG_JSON'] = '{"http_referer":"https://example.com","title":"Demo"}'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(
+                config.provider_config,
+                {'http_referer': 'https://example.com', 'title': 'Demo'},
+            )
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('PROVIDER_CONFIG_JSON', None)
+            else:
+                os.environ['PROVIDER_CONFIG_JSON'] = original_env
 
     def test_enable_ask_user_for_single_task_defaults_to_false(self):
         original_env = os.environ.pop('ENABLE_ASK_USER_FOR_SINGLE_TASK', None)

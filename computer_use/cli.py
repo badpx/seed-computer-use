@@ -643,7 +643,7 @@ def print_banner():
     banner = """
 ╔══════════════════════════════════════════════════════════╗
 ║              Computer Use Tool - 本地 GUI 自动化         ║
-║                     Powered by 火山方舟                  ║
+║                     Powered by OpenAI SDK               ║
 ╚══════════════════════════════════════════════════════════╝
 """
     print(banner)
@@ -657,6 +657,7 @@ def print_config_info(
 ):
     """打印调试用配置信息。"""
     print("[配置信息]")
+    print(f"  Provider: {config.provider}")
     print(f"  API地址: {config.base_url}")
     effective_device_name = config.device_name if device_name is None else device_name
     print(f"  设备: {effective_device_name}")
@@ -703,8 +704,8 @@ def interactive_mode(
     Args:
         model: 模型名称
         max_steps: 最大执行步数
-        thinking_mode: 方舟思考模式
-        reasoning_effort: 方舟思考档位
+        thinking_mode: 模型思考模式
+        reasoning_effort: 模型思考档位
         coordinate_space: 坐标空间
         coordinate_scale: 相对坐标量程
         screenshot_size: 传给模型前的截图缩放尺寸
@@ -893,8 +894,8 @@ def single_task_mode(
         instruction: 任务指令
         model: 模型名称
         max_steps: 最大执行步数
-        thinking_mode: 方舟思考模式
-        reasoning_effort: 方舟思考档位
+        thinking_mode: 模型思考模式
+        reasoning_effort: 模型思考档位
         coordinate_space: 坐标空间
         coordinate_scale: 相对坐标量程
         screenshot_size: 传给模型前的截图缩放尺寸
@@ -1024,14 +1025,14 @@ def main():
         '--thinking',
         '-t',
         choices=['enabled', 'disabled', 'auto'],
-        help='设置方舟思考模式：enabled / disabled / auto（默认从配置读取）'
+        help='设置模型思考模式：enabled / disabled / auto（默认从配置读取）'
     )
 
     parser.add_argument(
         '--reasoning-effort',
         '-r',
         choices=['low', 'medium', 'high'],
-        help='设置方舟思考档位：low / medium / high（默认从配置读取）'
+        help='设置模型思考档位：low / medium / high（默认从配置读取）'
     )
 
     parser.add_argument(

@@ -13,6 +13,7 @@ from pathlib import Path
 THINKING_MODES = ('enabled', 'disabled', 'auto')
 REASONING_EFFORTS = ('low', 'medium', 'high')
 COORDINATE_SPACES = ('relative', 'pixel')
+PROVIDERS = ('ark', 'openrouter')
 
 
 def normalize_thinking_mode(
@@ -83,13 +84,26 @@ def normalize_coordinate_space(
     return default
 
 
+def normalize_provider(
+    provider: Optional[str],
+    default: str = 'ark',
+) -> str:
+    """标准化 provider 名称。"""
+    normalized = str(provider or default).strip().lower()
+    if normalized in PROVIDERS:
+        return normalized
+    return default
+
+
 class Config:
     """配置类，支持多层级配置加载"""
     
     # 默认值
     DEFAULTS = {
-        'ARK_MODEL': 'doubao-seed-1-6-vision-250815',
-        'ARK_BASE_URL': 'http://ark.cn-beijing.volces.com/api/v3',
+        'PROVIDER': 'ark',
+        'MODEL': 'doubao-seed-1-6-vision-250815',
+        'BASE_URL': 'http://ark.cn-beijing.volces.com/api/v3',
+        'PROVIDER_CONFIG_JSON': '',
         'DEVICE_NAME': 'local',
         'DEVICE_CONFIG_JSON': '',
         'DEVICES_DIR': './devices',
@@ -114,7 +128,7 @@ class Config:
     }
     
     # 必需配置项
-    REQUIRED = ['ARK_API_KEY']
+    REQUIRED = ['API_KEY']
     
     def __init__(self):
         """初始化配置"""
@@ -229,12 +243,38 @@ class Config:
     @property
     def api_key(self) -> str:
         """API 密钥"""
-        return self._config.get('ARK_API_KEY', '')
+        return self._config.get('API_KEY', '')
+
+    @property
+    def provider(self) -> str:
+        """LLM provider 名称。"""
+        return normalize_provider(
+            self._config.get('PROVIDER'),
+            default=self.DEFAULTS['PROVIDER'],
+        )
     
     @property
     def model(self) -> str:
         """模型名称"""
-        return self._config.get('ARK_MODEL', self.DEFAULTS['ARK_MODEL'])
+        return self._config.get('MODEL', self.DEFAULTS['MODEL'])
+
+    @property
+    def provider_config(self) -> dict[str, Any]:
+        """LLM provider 私有配置。"""
+        raw = self._config.get(
+            'PROVIDER_CONFIG_JSON',
+            self.DEFAULTS['PROVIDER_CONFIG_JSON'],
+        )
+        text = str(raw or '').strip()
+        if not text:
+            return {}
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f'PROVIDER_CONFIG_JSON 不是合法 JSON: {exc}') from exc
+        if not isinstance(payload, dict):
+            raise ValueError('PROVIDER_CONFIG_JSON 必须是 JSON 对象')
+        return payload
 
     @property
     def device_name(self) -> str:
@@ -264,7 +304,7 @@ class Config:
     @property
     def base_url(self) -> str:
         """API 基础 URL"""
-        return self._config.get('ARK_BASE_URL', self.DEFAULTS['ARK_BASE_URL'])
+        return self._config.get('BASE_URL', self.DEFAULTS['BASE_URL'])
     
     @property
     def temperature(self) -> float:
@@ -341,7 +381,7 @@ class Config:
 
     @property
     def thinking_mode(self) -> str:
-        """方舟思考模式：enabled / disabled / auto。"""
+        """模型思考模式：enabled / disabled / auto。"""
         return normalize_thinking_mode(
             self._config.get('THINKING_MODE'),
             default='auto',
@@ -349,7 +389,7 @@ class Config:
 
     @property
     def reasoning_effort(self) -> str:
-        """方舟思考档位：low / medium / high。"""
+        """模型思考档位：low / medium / high。"""
         return normalize_reasoning_effort(
             self._config.get('REASONING_EFFORT'),
             default='medium',

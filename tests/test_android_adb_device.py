@@ -138,24 +138,13 @@ class AndroidAdbDeviceAdapterTests(unittest.TestCase):
             def get_environment_info(self):
                 return {'operating_system': 'Android'}
 
-        ark_stub = types.ModuleType('volcenginesdkarkruntime')
-
-        class PlaceholderArk:
-            def __init__(self, *args, **kwargs):
-                self.chat = types.SimpleNamespace(
-                    completions=types.SimpleNamespace(create=lambda **_: None)
-                )
-
-        ark_stub.Ark = PlaceholderArk
-
-        with mock.patch.dict(os.environ, {'ARK_API_KEY': 'test-key'}, clear=False), mock.patch.dict(
-            sys.modules,
-            {'volcenginesdkarkruntime': ark_stub},
-            clear=False,
-        ):
+        with mock.patch.dict(os.environ, {'API_KEY': 'test-key'}, clear=False):
             from computer_use.agent import ComputerUseAgent
 
-            with mock.patch('computer_use.agent.Ark', return_value=mock.Mock()):
+            with mock.patch(
+                'computer_use.agent.create_llm_client',
+                return_value=mock.Mock(),
+            ):
                 agent = ComputerUseAgent(
                     device_adapter=FakeAndroidDevice(),
                     device_name='android_adb',

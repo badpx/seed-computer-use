@@ -98,7 +98,7 @@ def discover_skills(skills_dir: str) -> List[Skill]:
 
 
 def skills_to_tools(skills: List[Skill]) -> List[dict]:
-    """Convert skills to Volcengine Ark function-calling tool format."""
+    """Convert skills to OpenAI-compatible function-calling tool format."""
     tools: List[dict] = []
     for skill in skills:
         tools.append(

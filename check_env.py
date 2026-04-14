@@ -11,7 +11,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from computer_use.compat import (
-    MAX_TESTED_PYTHON,
     MIN_PYTHON,
     get_python_compatibility_error,
     python_version_text,
@@ -25,10 +24,7 @@ def check_python_version():
     error = get_python_compatibility_error((version.major, version.minor))
     if error is None:
         print(f"  ✓ Python {version.major}.{version.minor}.{version.micro}")
-        print(
-            "  ✓ 兼容范围: "
-            f"{python_version_text(MIN_PYTHON)} - {python_version_text(MAX_TESTED_PYTHON)}"
-        )
+        print(f"  ✓ 最低要求: Python {python_version_text(MIN_PYTHON)}")
         return True
 
     print(f"  ✗ Python {version.major}.{version.minor}.{version.micro}")
@@ -40,7 +36,7 @@ def check_dependencies():
     """检查依赖包"""
     print("[2/5] 检查依赖包...")
     required = [
-        'volcenginesdkarkruntime',
+        'openai',
         'pyautogui',
         'PIL',
         'mss',
@@ -78,11 +74,12 @@ def check_config():
             # 隐藏部分密钥
             key = config.api_key
             masked = key[:8] + '...' + key[-4:] if len(key) > 12 else '***'
-            print(f"  ✓ ARK_API_KEY: {masked}")
+            print(f"  ✓ API_KEY: {masked}")
         else:
-            print(f"  ✗ ARK_API_KEY: 未设置")
+            print(f"  ✗ API_KEY: 未设置")
             return False
         
+        print(f"  ✓ Provider: {config.provider}")
         print(f"  ✓ 模型: {config.model}")
         print(f"  ✓ API地址: {config.base_url}")
         print(f"  ✓ 目标显示器: {config.display_index}")
@@ -191,7 +188,7 @@ def main():
         
         if not checks[2]:  # 配置检查失败
             print()
-            print("提示: 请设置 ARK_API_KEY 环境变量或创建 .env 文件")
+            print("提示: 请设置 API_KEY 环境变量或创建 .env 文件")
             print("  cp .env.example .env")
             print("  # 编辑 .env 文件，填入你的 API 密钥")
 

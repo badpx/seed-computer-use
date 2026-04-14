@@ -12,8 +12,6 @@ import base64
 from datetime import datetime
 from typing import Callable, Dict, Any, List, Optional, Set, Tuple
 
-from volcenginesdkarkruntime import Ark
-
 from .config import config, normalize_coordinate_space, resolve_thinking_settings
 from .action_parser import parse_action
 from .devices import create_device_adapter, discover_device_plugins
@@ -24,6 +22,7 @@ from .devices.coordinates import (
     normalize_scroll_direction,
 )
 from .devices.helpers import frame_to_data_url, prepare_model_frame
+from .llm import create_llm_client
 from .logging_utils import ContextLogger
 from .prompts import COMPUTER_USE_DOUBAO, PHONE_USE_DOUBAO, SKILLS_PROMPT_ADDENDUM
 from .skills import Skill, discover_skills, skills_to_tools, load_skill
@@ -71,6 +70,7 @@ class ComputerUseAgent:
     def __init__(
         self,
         model: Optional[str] = None,
+        provider: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -105,11 +105,12 @@ class ComputerUseAgent:
         
         Args:
             model: 模型名称，默认从配置读取
+            provider: 模型 provider，默认从配置读取
             api_key: API密钥，默认从配置读取
             base_url: API基础URL，默认从配置读取
             temperature: 温度参数，默认从配置读取
-            thinking_mode: 方舟思考模式，enabled / disabled / auto
-            reasoning_effort: 方舟思考档位，low / medium / high
+            thinking_mode: 模型思考模式，enabled / disabled / auto
+            reasoning_effort: 模型思考档位，low / medium / high
             coordinate_space: 坐标空间，relative / pixel
             coordinate_scale: 相对坐标量程
             screenshot_size: 传给模型前的截图缩放尺寸，仅支持正方形
@@ -133,6 +134,8 @@ class ComputerUseAgent:
         """
         # 配置参数
         self.model = model or config.model
+        self.provider = provider or config.provider
+        self.provider_config = dict(config.provider_config)
         self.api_key = api_key or config.api_key
         self.base_url = base_url or config.base_url
         self.temperature = temperature if temperature is not None else config.temperature
@@ -220,12 +223,14 @@ class ComputerUseAgent:
         self.runtime_status_callback = runtime_status_callback
         self.ask_user_callback = ask_user_callback
 
-        config.validate()
+        self._validate_runtime_config()
 
-        # 初始化客户端
-        self.client = Ark(
+        # 初始化 LLM 适配层
+        self.llm_client = create_llm_client(
+            provider=self.provider,
             base_url=self.base_url,
-            api_key=self.api_key
+            api_key=self.api_key,
+            provider_config=self.provider_config,
         )
         
         # 会话级上下文与运行态
@@ -299,6 +304,7 @@ class ComputerUseAgent:
         self.context_logger.start_task(
             instruction=instruction,
             model=self.model,
+            provider=self.provider,
             max_steps=self.max_steps,
             temperature=self.temperature,
             thinking_mode=self.thinking_mode,
@@ -367,6 +373,7 @@ class ComputerUseAgent:
                     'instruction': instruction,
                     'step': self.current_step,
                     'model': self.model,
+                    'provider': self.provider,
                     'thinking_mode': self.thinking_mode,
                     'reasoning_effort': self.reasoning_effort,
                     'coordinate_space': self.coordinate_space,
@@ -725,6 +732,14 @@ class ComputerUseAgent:
         self.session_history = []
         self.activated_skills = set()
 
+    def _validate_runtime_config(self) -> None:
+        """校验当前实例的生效配置，而不是仅依赖全局 config。"""
+        if not self.api_key:
+            raise ValueError(
+                "缺少必需配置项: API_KEY\n"
+                "请通过环境变量、.env 文件或初始化参数设置"
+            )
+
     def clear_session_context(self) -> None:
         """清理当前会话的多轮上下文历史。"""
         self._reset_session_state()
@@ -994,7 +1009,7 @@ class ComputerUseAgent:
         max_tokens: int,
     ) -> Dict[str, str]:
         """调用模型总结单个历史 turn。"""
-        request_kwargs: Dict[str, Any] = dict(
+        response = self.llm_client.create_chat_completion(
             model=self.model,
             messages=[
                 {
@@ -1008,12 +1023,9 @@ class ComputerUseAgent:
             ],
             temperature=self.temperature,
             max_tokens=max_tokens,
+            thinking_mode=self.thinking_mode,
+            reasoning_effort=self.reasoning_effort,
         )
-        if self.thinking_mode is not None:
-            request_kwargs['thinking'] = {'type': self.thinking_mode}
-        if self.reasoning_effort is not None:
-            request_kwargs['reasoning_effort'] = self.reasoning_effort
-        response = self.client.chat.completions.create(**request_kwargs)
         response_text = self._extract_response_text(response)
         return self._parse_compaction_response(response_text)
 
@@ -1272,6 +1284,7 @@ class ComputerUseAgent:
         lines = [
             '[生效参数]',
             f"  模型: {self.model}",
+            f"  Provider: {self.provider}",
             f"  设备: {self.device_name}",
             f"  最大步数: {self.max_steps}",
             f"  思考: {thinking_label} / {reasoning_label}",
@@ -1343,20 +1356,14 @@ class ComputerUseAgent:
         choice = None
 
         for _ in range(max_skill_rounds):
-            kwargs: Dict[str, Any] = dict(
+            response = self.llm_client.create_chat_completion(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,
+                thinking_mode=self.thinking_mode,
+                reasoning_effort=self.reasoning_effort,
+                tools=self._get_active_tools() or None,
             )
-            if self.thinking_mode is not None:
-                kwargs['thinking'] = {'type': self.thinking_mode}
-            if self.reasoning_effort is not None:
-                kwargs['reasoning_effort'] = self.reasoning_effort
-            active_tools = self._get_active_tools()
-            if active_tools:
-                kwargs['tools'] = active_tools
-
-            response = self.client.chat.completions.create(**kwargs)
             choice = response.choices[0]
 
             tool_calls = getattr(choice.message, 'tool_calls', None) or []
@@ -1895,7 +1902,7 @@ class ComputerUseAgent:
         )
 
     def _build_logged_model_response(self, response_obj: Any) -> Dict[str, Any]:
-        """提取方舟响应中的调试字段用于日志记录。"""
+        """提取聊天补全响应中的调试字段用于日志记录。"""
         choice = self._get_first_choice(response_obj)
         message = getattr(choice, 'message', None) if choice is not None else None
         tool_calls = getattr(message, 'tool_calls', None) if message is not None else None

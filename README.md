@@ -1,6 +1,6 @@
 # Computer Use Tool
 
-基于火山方舟模型的 GUI 自动化工具。默认可直接操控本地桌面，也支持通过设备插件连接 Android 手机、VNC 远程桌面等其他环境。
+基于 OpenAI SDK 的 GUI 自动化工具。默认可直接操控本地桌面，也支持通过设备插件连接 Android 手机、VNC 远程桌面等其他环境。默认 provider 为 Ark，并通过兼容 OpenAI API 的方式调用模型。
 
 ## 你可以先这样用
 
@@ -23,7 +23,7 @@ python -m venv venv
 方式一：环境变量
 
 ```bash
-export ARK_API_KEY="your_api_key_here"
+export API_KEY="your_api_key_here"
 ```
 
 方式二：配置文件
@@ -65,10 +65,7 @@ python -m computer_use "打开浏览器"
 
 - 操作系统：macOS / Windows / Linux
 - Python：3.8 - 3.13
-- 网络：可访问火山方舟 API
-
-> 目前不建议使用 Python 3.14+。
-> `volcengine-python-sdk[ark]` 依赖 `pydantic.v1` 兼容层，而该兼容层在 Python 3.14+ 上会触发兼容性告警，且不保证可正常工作。
+- 网络：可访问模型服务 API
 
 ## 最常用的运行方式
 
@@ -131,9 +128,11 @@ python -m computer_use "分析页面状态" --verbose
 
 | 配置项 | 环境变量 | 默认值 | 说明 |
 |--------|----------|--------|------|
-| API 密钥 | `ARK_API_KEY` | - | 必需，火山方舟 API 密钥 |
-| 模型名称 | `ARK_MODEL` | `doubao-seed-1-6-vision-250815` | 使用的模型 |
-| API 地址 | `ARK_BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL |
+| API 密钥 | `API_KEY` | - | 必需，模型服务 API 密钥 |
+| Provider | `PROVIDER` | `ark` | 当前 provider profile |
+| 模型名称 | `MODEL` | `doubao-seed-1-6-vision-250815` | 使用的模型 |
+| API 地址 | `BASE_URL` | `http://ark.cn-beijing.volces.com/api/v3` | API 基础 URL |
+| Provider 配置 | `PROVIDER_CONFIG_JSON` | - | provider 私有 JSON 配置，例如 OpenRouter headers |
 | 设备插件 | `DEVICE_NAME` | `local` | 当前设备适配器 |
 | 设备配置 | `DEVICE_CONFIG_JSON` | - | 设备插件私有 JSON 配置 |
 | 目标显示器 | `DISPLAY_INDEX` | `0` | 仅对支持目标切换的设备生效；`local` 会把它解释为显示器编号 |
@@ -149,10 +148,11 @@ python -m computer_use "分析页面状态" --verbose
 ### `.env` 示例
 
 ```bash
-ARK_API_KEY=your_api_key_here
-
-ARK_BASE_URL=http://ark.cn-beijing.volces.com/api/v3
-ARK_MODEL=doubao-seed-1-6-vision-250815
+API_KEY=your_api_key_here
+PROVIDER=ark
+BASE_URL=http://ark.cn-beijing.volces.com/api/v3
+MODEL=doubao-seed-1-6-vision-250815
+PROVIDER_CONFIG_JSON=
 DEVICE_NAME=local
 DEVICE_CONFIG_JSON=
 DEVICES_DIR=./devices
@@ -167,13 +167,29 @@ CONTEXT_LOG_DIR=./logs
 ENABLE_ASK_USER_FOR_SINGLE_TASK=false
 ```
 
-如果订阅了方舟 Coding Plan，可使用：
+如果订阅了 Ark Coding Plan，可使用：
 
 ```bash
-ARK_API_KEY=your_api_key_here
-ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
-ARK_MODEL=ark-code-latest
+API_KEY=your_api_key_here
+PROVIDER=ark
+BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+MODEL=ark-code-latest
 ```
+
+如果使用 OpenRouter，可使用：
+
+```bash
+API_KEY=your_api_key_here
+PROVIDER=openrouter
+BASE_URL=https://openrouter.ai/api/v1
+MODEL=openai/gpt-4o-mini
+PROVIDER_CONFIG_JSON={"http_referer":"https://your-app.example","title":"Computer Use Tool"}
+```
+
+其中 `PROVIDER_CONFIG_JSON` 当前会被 `openrouter` provider 用来生成推荐请求头：
+
+- `http_referer` -> `HTTP-Referer`
+- `title` -> `X-OpenRouter-Title`
 
 ## 设备插件
 
@@ -268,7 +284,7 @@ python -m computer_use [指令] [选项]
 ### 常见问题
 
 **Q: 启动时提示缺少 API 密钥？**  
-A: 请设置 `ARK_API_KEY` 环境变量或创建 `.env` 文件。
+A: 请设置 `API_KEY` 环境变量或创建 `.env` 文件。
 
 **Q: 模型调用失败？**  
 A: 请检查网络连接、API 密钥和模型名称。
@@ -279,8 +295,8 @@ A: 请检查屏幕权限设置，某些系统需要授权才能截图。
 **Q: 鼠标/键盘操作无效？**  
 A: 请检查是否有其他应用占用了输入控制权，或当前设备插件是否支持该动作。
 
-**Q: Python 3.14+ 运行时报 `Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater`？**  
-A: 这是 `volcengine-python-sdk[ark]` 依赖链触发的兼容性告警。请改用 Python 3.13 或更低版本重新创建虚拟环境。
+**Q: 如何切换到其他兼容 OpenAI SDK 的模型服务？**  
+A: 修改 `PROVIDER`、`BASE_URL`、`MODEL` 和 `API_KEY` 即可。本次重构已将 SDK 对接收敛到内部适配层，后续新增 provider profile 时无需改动 Agent 主流程。
 
 ## 面向开发者
 
