@@ -682,6 +682,7 @@ def interactive_mode(
     model: Optional[str] = None,
     max_steps: Optional[int] = None,
     stream: Optional[bool] = None,
+    max_tokens: Optional[int] = None,
     thinking_mode: Optional[str] = None,
     reasoning_effort: Optional[str] = None,
     coordinate_space: Optional[str] = None,
@@ -706,6 +707,7 @@ def interactive_mode(
         model: 模型名称
         max_steps: 最大执行步数
         stream: 是否启用流式响应
+        max_tokens: 主任务模型调用最大输出 token 数
         thinking_mode: 模型思考模式
         reasoning_effort: 模型思考档位
         coordinate_space: 坐标空间
@@ -753,6 +755,7 @@ def interactive_mode(
             model=model,
             max_steps=max_steps,
             stream=stream,
+            max_tokens=max_tokens,
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
             coordinate_space=coordinate_space,
@@ -874,6 +877,7 @@ def single_task_mode(
     model: Optional[str] = None,
     max_steps: Optional[int] = None,
     stream: Optional[bool] = None,
+    max_tokens: Optional[int] = None,
     thinking_mode: Optional[str] = None,
     reasoning_effort: Optional[str] = None,
     coordinate_space: Optional[str] = None,
@@ -899,6 +903,7 @@ def single_task_mode(
         model: 模型名称
         max_steps: 最大执行步数
         stream: 是否启用流式响应
+        max_tokens: 主任务模型调用最大输出 token 数
         thinking_mode: 模型思考模式
         reasoning_effort: 模型思考档位
         coordinate_space: 坐标空间
@@ -943,6 +948,7 @@ def single_task_mode(
         model=model,
         max_steps=max_steps,
         stream=stream,
+        max_tokens=max_tokens,
         thinking_mode=thinking_mode,
         reasoning_effort=reasoning_effort,
         coordinate_space=coordinate_space,
@@ -1025,6 +1031,12 @@ def main():
         '-s',
         type=int,
         help='最大执行步数（默认从配置读取）'
+    )
+
+    parser.add_argument(
+        '--max-tokens',
+        type=int,
+        help='设置主任务模型调用的最大输出 token 数（默认从配置读取）'
     )
 
     stream_group = parser.add_mutually_exclusive_group()
@@ -1166,6 +1178,7 @@ def main():
     verbose = not args.quiet
     natural_scroll = None
     stream = None
+    max_tokens = None
     thinking_mode = None
     reasoning_effort = None
     coordinate_space = None
@@ -1186,6 +1199,8 @@ def main():
         stream = True
     elif args.no_stream:
         stream = False
+    if args.max_tokens is not None:
+        max_tokens = args.max_tokens
 
     if args.thinking:
         thinking_mode = args.thinking
@@ -1227,6 +1242,7 @@ def main():
                 model=args.model,
                 max_steps=args.max_steps,
                 stream=stream,
+                max_tokens=max_tokens,
                 thinking_mode=thinking_mode,
                 reasoning_effort=reasoning_effort,
                 coordinate_space=coordinate_space,
@@ -1253,6 +1269,7 @@ def main():
                 model=args.model,
                 max_steps=args.max_steps,
                 stream=stream,
+                max_tokens=max_tokens,
                 thinking_mode=thinking_mode,
                 reasoning_effort=reasoning_effort,
                 coordinate_space=coordinate_space,

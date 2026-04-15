@@ -75,6 +75,7 @@ class ComputerUseAgent:
         base_url: Optional[str] = None,
         temperature: Optional[float] = None,
         stream: Optional[bool] = None,
+        max_tokens: Optional[int] = None,
         thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         coordinate_space: Optional[str] = None,
@@ -111,6 +112,7 @@ class ComputerUseAgent:
             base_url: API基础URL，默认从配置读取
             temperature: 温度参数，默认从配置读取
             stream: 是否启用流式响应，未设置时不传该参数
+            max_tokens: 主任务模型调用最大输出 token 数，未设置时不传
             thinking_mode: 模型思考模式，enabled / disabled / auto
             reasoning_effort: 模型思考档位，low / medium / high
             coordinate_space: 坐标空间，relative / pixel
@@ -142,6 +144,7 @@ class ComputerUseAgent:
         self.base_url = base_url or config.base_url
         self.temperature = temperature if temperature is not None else config.temperature
         self.stream = stream if stream is not None else config.stream
+        self.max_tokens = max_tokens if max_tokens is not None else config.max_tokens
         thinking_mode_explicit = (
             thinking_mode is not None or config.has_explicit_value('THINKING_MODE')
         )
@@ -1365,6 +1368,7 @@ class ComputerUseAgent:
                 messages=messages,
                 temperature=self.temperature,
                 stream=self.stream,
+                max_tokens=self.max_tokens,
                 thinking_mode=self.thinking_mode,
                 reasoning_effort=self.reasoning_effort,
                 tools=self._get_active_tools() or None,

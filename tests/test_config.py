@@ -311,6 +311,33 @@ class ConfigDefaultsTests(unittest.TestCase):
             else:
                 os.environ['STREAM'] = original_env
 
+    def test_max_tokens_defaults_to_none(self):
+        original_env = os.environ.pop('MAX_TOKENS', None)
+        original_load_from_file = Config._load_from_file
+        try:
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertIsNone(config.max_tokens)
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is not None:
+                os.environ['MAX_TOKENS'] = original_env
+
+    def test_max_tokens_reads_from_env(self):
+        original_env = os.environ.get('MAX_TOKENS')
+        original_load_from_file = Config._load_from_file
+        try:
+            os.environ['MAX_TOKENS'] = '1024'
+            Config._load_from_file = lambda self: None
+            config = Config()
+            self.assertEqual(config.max_tokens, 1024)
+        finally:
+            Config._load_from_file = original_load_from_file
+            if original_env is None:
+                os.environ.pop('MAX_TOKENS', None)
+            else:
+                os.environ['MAX_TOKENS'] = original_env
+
     def test_enable_ask_user_for_single_task_defaults_to_false(self):
         original_env = os.environ.pop('ENABLE_ASK_USER_FOR_SINGLE_TASK', None)
         original_load_from_file = Config._load_from_file

@@ -134,6 +134,7 @@ python -m computer_use "分析页面状态" --verbose
 | API 地址 | `BASE_URL` | 按 provider 取默认值 | API 基础 URL |
 | Provider 配置 | `PROVIDER_CONFIG_JSON` | - | provider 私有 JSON 配置，例如 OpenRouter headers |
 | 流式响应 | `STREAM` | - | 是否向模型调用显式传入 `stream=true/false`；未配置时不传 |
+| 最大输出长度 | `MAX_TOKENS` | - | 主任务模型调用的 `max_tokens`；未配置时不传 |
 | 设备插件 | `DEVICE_NAME` | `local` | 当前设备适配器 |
 | 设备配置 | `DEVICE_CONFIG_JSON` | - | 设备插件私有 JSON 配置 |
 | 目标显示器 | `DISPLAY_INDEX` | `0` | 仅对支持目标切换的设备生效；`local` 会把它解释为显示器编号 |
@@ -155,6 +156,7 @@ BASE_URL=http://ark.cn-beijing.volces.com/api/v3
 MODEL=doubao-seed-1-6-vision-250815
 PROVIDER_CONFIG_JSON=
 STREAM=
+MAX_TOKENS=
 DEVICE_NAME=local
 DEVICE_CONFIG_JSON=
 DEVICES_DIR=./devices
@@ -201,6 +203,7 @@ PROVIDER=openai
 BASE_URL=https://api.openai.com/v1
 MODEL=gpt-4o-mini
 PROVIDER_CONFIG_JSON=
+MAX_TOKENS=
 ```
 
 如果使用 Ollama，可使用：
@@ -216,7 +219,7 @@ PROVIDER_CONFIG_JSON=
 Ollama 说明：
 
 - `MODEL` 需要你根据本地已安装模型自行配置
-- 模型上下文窗口和 `max_tokens` 也需要按具体模型能力自行配置
+- 模型上下文窗口和 `MAX_TOKENS` 也需要按具体模型能力自行配置
 - `THINKING_MODE=enabled/disabled` 会映射为请求体中的 `thinking={"type":"enabled"}` / `thinking={"type":"disabled"}`
 - `REASONING_EFFORT` 当前不会传给 Ollama provider
 
@@ -280,6 +283,7 @@ python -m computer_use [指令] [选项]
 |------|------|------|
 | `--model` | `-m` | 指定模型名称 |
 | `--max-steps` | `-s` | 指定最大执行步数 |
+| `--max-tokens` | - | 设置主任务模型调用的最大输出 token 数 |
 | `--thinking <mode>` | `-t` | 设置思考模式，取值 `enabled` / `disabled` / `auto` |
 | `--reasoning-effort <level>` | `-r` | 设置思考档位，取值 `low` / `medium` / `high` |
 | `--stream` / `--no-stream` | - | 显式启用或禁用模型调用的 `stream` 参数 |

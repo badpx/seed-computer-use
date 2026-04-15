@@ -118,6 +118,7 @@ class Config:
         'CONTEXT_LOG_DIR': './logs',
         'SAVE_CONTEXT_LOG': 'true',
         'MAX_STEPS': '100',
+        'MAX_TOKENS': '',
         'TEMPERATURE': '0.0',
         'STREAM': '',
         'THINKING_MODE': '',
@@ -239,6 +240,21 @@ class Config:
             return int(self._config.get(key, default))
         except (ValueError, TypeError):
             return default
+
+    def get_optional_int(self, key: str) -> Optional[int]:
+        """获取可选整数配置项，未设置或非法时返回 None。"""
+        value = self._config.get(key)
+        if value is None:
+            return None
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        try:
+            return int(text)
+        except (ValueError, TypeError):
+            return None
     
     def get_float(self, key: str, default: float = 0.0) -> float:
         """获取浮点数类型配置项"""
@@ -264,6 +280,11 @@ class Config:
     def model(self) -> str:
         """模型名称"""
         return self._config.get('MODEL', self.DEFAULTS['MODEL'])
+
+    @property
+    def max_tokens(self) -> Optional[int]:
+        """模型调用最大输出 token 数，未设置时不传。"""
+        return self.get_optional_int('MAX_TOKENS')
 
     @property
     def provider_config(self) -> dict[str, Any]:

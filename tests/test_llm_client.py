@@ -30,11 +30,13 @@ class OpenAiLlmAdapterTests(unittest.TestCase):
         provider_profile.build_extra_body.assert_called_once_with(
             thinking_mode='enabled',
             reasoning_effort='high',
+            max_tokens=None,
             provider_config={'demo': True},
         )
         provider_profile.build_extra_headers.assert_called_once_with(
             thinking_mode='enabled',
             reasoning_effort='high',
+            max_tokens=None,
             provider_config={'demo': True},
         )
         sdk_client.chat.completions.create.assert_called_once_with(
@@ -110,6 +112,45 @@ class OpenAiLlmAdapterTests(unittest.TestCase):
             messages=[{'role': 'user', 'content': 'hello'}],
             temperature=0.0,
             stream=True,
+        )
+
+    def test_adapter_passes_max_tokens_when_explicitly_configured(self):
+        from computer_use.llm.openai_adapter import OpenAiChatClient
+
+        sdk_client = mock.Mock()
+        sdk_client.chat.completions.create.return_value = object()
+        client = OpenAiChatClient(sdk_client=sdk_client, provider='openai')
+
+        client.create_chat_completion(
+            model='demo-model',
+            messages=[{'role': 'user', 'content': 'hello'}],
+            temperature=0.0,
+            max_tokens=512,
+        )
+
+        sdk_client.chat.completions.create.assert_called_once_with(
+            model='demo-model',
+            messages=[{'role': 'user', 'content': 'hello'}],
+            temperature=0.0,
+            max_tokens=512,
+        )
+
+    def test_adapter_omits_max_tokens_when_unconfigured(self):
+        from computer_use.llm.openai_adapter import OpenAiChatClient
+
+        sdk_client = mock.Mock()
+        sdk_client.chat.completions.create.return_value = object()
+        client = OpenAiChatClient(sdk_client=sdk_client, provider='openai')
+
+        client.create_chat_completion(
+            model='demo-model',
+            messages=[{'role': 'user', 'content': 'hello'}],
+            temperature=0.0,
+        )
+
+        self.assertNotIn(
+            'max_tokens',
+            sdk_client.chat.completions.create.call_args.kwargs,
         )
 
     def test_adapter_omits_stream_when_unconfigured(self):
@@ -397,6 +438,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {
@@ -422,6 +464,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -430,6 +473,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_headers(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -446,6 +490,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -454,6 +499,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_headers(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -470,6 +516,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {'thinking': {'type': 'enabled'}},
@@ -478,6 +525,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='disabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {'thinking': {'type': 'disabled'}},
@@ -486,6 +534,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_body(
                 thinking_mode='auto',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -494,6 +543,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_headers(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},
@@ -508,6 +558,7 @@ class ProviderRegistryTests(unittest.TestCase):
             profile.build_extra_headers(
                 thinking_mode='enabled',
                 reasoning_effort='high',
+                max_tokens=512,
                 provider_config={},
             ),
             {},

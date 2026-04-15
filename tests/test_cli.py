@@ -671,6 +671,7 @@ class CliPromptTests(unittest.TestCase):
                 screenshot_size=1024,
                 max_context_screenshots=3,
                 stream=True,
+                max_tokens=512,
                 include_execution_feedback=False,
                 log_full_messages=True,
                 verbose=False,
@@ -680,6 +681,7 @@ class CliPromptTests(unittest.TestCase):
         self.assertEqual(fake_agent_instances[0].kwargs['screenshot_size'], 1024)
         self.assertEqual(fake_agent_instances[0].kwargs['max_context_screenshots'], 3)
         self.assertEqual(fake_agent_instances[0].kwargs['stream'], True)
+        self.assertEqual(fake_agent_instances[0].kwargs['max_tokens'], 512)
         self.assertEqual(
             fake_agent_instances[0].kwargs['include_execution_feedback'],
             False,
@@ -903,6 +905,22 @@ class CliPromptTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 0)
         self.assertEqual(single_task_mode.call_args.kwargs['stream'], True)
+
+    def test_main_passes_max_tokens_to_single_task_mode(self):
+        with mock.patch.object(
+            self.cli, 'ensure_supported_python'
+        ), mock.patch.object(
+            self.cli, 'single_task_mode',
+            return_value={'success': True, 'steps': [], 'final_response': 'ok'},
+        ) as single_task_mode:
+            with mock.patch.object(
+                sys, 'argv', ['computer_use', '单次任务', '--max-tokens', '512']
+            ):
+                with self.assertRaises(SystemExit) as exc:
+                    self.cli.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertEqual(single_task_mode.call_args.kwargs['max_tokens'], 512)
 
     def test_ask_user_with_cli_returns_selected_option(self):
         with mock.patch.object(

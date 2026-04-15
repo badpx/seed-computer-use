@@ -55,6 +55,7 @@ class OpenAiChatClient:
         extra_body = self._build_extra_body(
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
         )
         if extra_body:
             kwargs['extra_body'] = extra_body
@@ -62,6 +63,7 @@ class OpenAiChatClient:
         extra_headers = self._build_extra_headers(
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
         )
         if extra_headers:
             kwargs['extra_headers'] = extra_headers
@@ -73,12 +75,14 @@ class OpenAiChatClient:
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
     ) -> Dict[str, Any]:
         if self.provider_profile is None:
             return {}
         return self.provider_profile.build_extra_body(
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
             provider_config=self.provider_config,
         )
 
@@ -87,11 +91,13 @@ class OpenAiChatClient:
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
     ) -> Dict[str, str]:
         if self.provider_profile is None:
             return {}
         return self.provider_profile.build_extra_headers(
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
             provider_config=self.provider_config,
         )

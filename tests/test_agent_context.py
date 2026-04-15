@@ -1821,6 +1821,41 @@ class AgentContextTests(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertTrue(self.calls[0]['stream'])
 
+    def test_agent_passes_max_tokens_only_for_main_task_calls(self):
+        self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
+
+        agent = self._make_agent(max_tokens=512)
+        result = agent.run('Use max tokens')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(self.calls[0]['max_tokens'], 512)
+
+    def test_compaction_ignores_agent_max_tokens_setting(self):
+        self.responses[:] = [
+            {
+                'content': '',
+                'reasoning_content': json.dumps(
+                    {
+                        'condensed_user_instruction': 'Compressed user',
+                        'condensed_assistant_response': 'Compressed assistant',
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+        ]
+
+        agent = self._make_agent(max_tokens=999, persistent_session=True)
+        agent._summarize_turn_for_compaction(
+            {
+                'user_messages': ['First task'],
+                'assistant_messages': ['Thought: first\nAction: wait()'],
+                'feedback_messages': [],
+            },
+            max_tokens=200,
+        )
+
+        self.assertEqual(self.calls[0]['max_tokens'], 200)
+
     def test_agent_passes_only_thinking_when_only_thinking_is_configured(self):
         self.responses[:] = ["Thought: done\nAction: finished(content='ok')"]
 

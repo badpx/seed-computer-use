@@ -18,8 +18,10 @@ class ProviderProfile:
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
         provider_config: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        del max_tokens
         return {}
 
     def build_extra_headers(
@@ -27,8 +29,10 @@ class ProviderProfile:
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
         provider_config: Optional[Dict[str, Any]],
     ) -> Dict[str, str]:
+        del max_tokens
         return {}
 
 
@@ -44,9 +48,10 @@ class ArkProviderProfile(ProviderProfile):
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
         provider_config: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        del provider_config
+        del max_tokens, provider_config
         extra_body: Dict[str, Any] = {}
         if thinking_mode is not None:
             extra_body['thinking'] = {'type': thinking_mode}
@@ -66,9 +71,10 @@ class OpenRouterProviderProfile(ProviderProfile):
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
         provider_config: Optional[Dict[str, Any]],
     ) -> Dict[str, str]:
-        del thinking_mode, reasoning_effort
+        del thinking_mode, reasoning_effort, max_tokens
         config = dict(provider_config or {})
         headers: Dict[str, str] = {}
         http_referer = str(config.get('http_referer') or '').strip()
@@ -98,9 +104,10 @@ class OllamaProviderProfile(ProviderProfile):
         *,
         thinking_mode: Optional[str],
         reasoning_effort: Optional[str],
+        max_tokens: Optional[int],
         provider_config: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        del reasoning_effort, provider_config
+        del reasoning_effort, max_tokens, provider_config
         if thinking_mode in ('enabled', 'disabled'):
             return {'thinking': {'type': thinking_mode}}
         return {}
