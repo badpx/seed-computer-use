@@ -1,6 +1,6 @@
 # Computer Use Tool
 
-基于 OpenAI SDK 的 GUI 自动化工具。默认可直接操控本地桌面，也支持通过设备插件连接 Android 手机、VNC 远程桌面等其他环境。默认 provider 为 Ark，并通过兼容 OpenAI API 的方式调用模型。
+基于 VLM 的 GUI 自动化工具。默认可直接操控本地桌面，也支持通过设备插件连接 Android 手机、VNC 远程桌面等其他环境。默认 provider 为 Ark，并通过兼容 OpenAI API 的方式调用模型。
 
 ## 你可以先这样用
 
